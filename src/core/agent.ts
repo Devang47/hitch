@@ -1,14 +1,8 @@
+import { c } from "../colors.js";
+import type { IO, Message, ToolCall, Usage } from "../types.js";
 import { client, config } from "./llm.js";
 import { checkPermission, type PermMode } from "./permissions.js";
 import { toolMap, toolSpecs } from "./tools.js";
-import { c } from "./ui.js";
-
-export type IO = {
-  out: (text: string) => void;
-  ask: (question: string) => Promise<string>;
-};
-
-export type Usage = { prompt: number; completion: number; cost: number };
 
 /**
  * Run one user turn to completion: call the model, stream its reply, execute any
@@ -17,10 +11,10 @@ export type Usage = { prompt: number; completion: number; cost: number };
  * each new message via `onMessage` (for session persistence).
  */
 export async function runTurn(
-  messages: any[],
+  messages: Message[],
   io: IO,
   mode: PermMode,
-  onMessage: (message: any) => void,
+  onMessage: (message: Message) => void,
 ): Promise<Usage> {
   const usage: Usage = { prompt: 0, completion: 0, cost: 0 };
   const specs = toolSpecs();
@@ -41,7 +35,7 @@ export async function runTurn(
 
     let content = "";
     let printedText = false;
-    const toolCalls: any[] = [];
+    const toolCalls: ToolCall[] = [];
 
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta;
@@ -53,7 +47,7 @@ export async function runTurn(
       // Tool-call fragments arrive split across chunks; merge them by index.
       for (const tc of delta?.tool_calls ?? []) {
         toolCalls[tc.index] ??= { id: "", type: "function", function: { name: "", arguments: "" } };
-        const call = toolCalls[tc.index];
+        const call = toolCalls[tc.index]!; // just ensured present on the line above
         if (tc.id) call.id = tc.id;
         if (tc.function?.name) call.function.name += tc.function.name;
         if (tc.function?.arguments) call.function.arguments += tc.function.arguments;
@@ -66,7 +60,7 @@ export async function runTurn(
     }
     if (printedText) io.out("\n");
 
-    const assistant: any = { role: "assistant", content: content || null };
+    const assistant: Message = { role: "assistant", content: content || null };
     if (toolCalls.length) assistant.tool_calls = toolCalls;
     messages.push(assistant);
     onMessage(assistant);
@@ -75,7 +69,7 @@ export async function runTurn(
 
     for (const call of toolCalls) {
       const result = await runTool(call, io, mode);
-      const toolMessage = { role: "tool", tool_call_id: call.id, content: result };
+      const toolMessage: Message = { role: "tool", tool_call_id: call.id, content: result };
       messages.push(toolMessage);
       onMessage(toolMessage);
     }
@@ -83,7 +77,7 @@ export async function runTurn(
   }
 }
 
-async function runTool(call: any, io: IO, mode: PermMode): Promise<string> {
+async function runTool(call: ToolCall, io: IO, mode: PermMode): Promise<string> {
   const tool = toolMap.get(call.function.name);
   if (!tool) return `Error: unknown tool ${call.function.name}`;
 

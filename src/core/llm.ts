@@ -1,7 +1,7 @@
 import OpenAI from "openai";
-import { resolveApiKey, resolveModel } from "./settings.js";
+import { resolveApiKey, resolveModel } from "../config/settings.js";
 
-/** Mutable so `/model` can switch it mid-session. cli.ts refines model with the --model flag. */
+/** Mutable so `/model` can switch it mid-session. cli refines model with the --model flag. */
 export const config = {
   model: resolveModel(),
   // Cap output per turn. Without it, providers reserve their full max output

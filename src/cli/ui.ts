@@ -1,19 +1,6 @@
 import { basename } from "node:path";
-
-// Colors auto-off when not a TTY (pipes, CI) or when NO_COLOR is set — keeps
-// piped output and test assertions clean. No dependency: just ANSI.
-const enabled = !!process.stdout.isTTY && !process.env.NO_COLOR;
-const style = (code: string) => (s: string) => (enabled ? `\x1b[${code}m${s}\x1b[0m` : s);
-
-export const c = {
-  dim: style("2"),
-  bold: style("1"),
-  red: style("31"),
-  green: style("32"),
-  yellow: style("33"),
-  magenta: style("35"),
-  cyan: style("36"),
-};
+import { c } from "../colors.js";
+import type { Usage } from "../types.js";
 
 const VERSION = "0.1.0"; // keep in step with package.json
 
@@ -67,4 +54,32 @@ function modeColor(mode: string): string {
 /** The REPL prompt: the current directory name + an arrow. */
 export function promptLabel(cwd: string): string {
   return `${c.magenta(basename(cwd) || "hitch")} ${c.cyan("❯")} `;
+}
+
+/** One-line token/cost summary for a turn's running totals. */
+export function costLine(t: Usage): string {
+  const tok = c.dim(`${t.prompt + t.completion} tok (${t.prompt}+${t.completion})`);
+  return t.cost > 0 ? `${c.green(`$${t.cost.toFixed(4)}`)} ${c.dim("·")} ${tok}` : tok;
+}
+
+export function printHelp(): void {
+  console.log(`${c.bold("hitch")} — a minimal OpenRouter coding agent
+
+${c.dim("usage:")} hitch [prompt] [flags]
+
+${c.dim("flags:")}
+  --model <id>   model for this run (default: config default, or $HITCH_MODEL)
+  --resume       continue the most recent session in this directory
+  --yolo         auto-approve every tool call
+  --readonly     allow reads only; block writes and commands
+  -h, --help     show this help
+
+${c.dim("in-session:")}
+  /              list commands (Tab completes them)
+  /model [query] pick the model for THIS session (searchable)
+  /models --default   set the default model for all new sessions
+  /models --refresh   refresh the model list from OpenRouter
+  /cost          token + cost totals
+  /help          this help
+  /exit          quit`);
 }

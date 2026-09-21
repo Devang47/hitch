@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { runTurn } from "./agent.js";
+import { runTurn } from "./core/agent.js";
 import { type FakeServer, startFakeOpenRouter } from "./testkit.js";
 
 let fake: FakeServer;

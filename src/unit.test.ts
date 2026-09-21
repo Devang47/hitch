@@ -3,10 +3,10 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { loadedContextFiles, systemPrompt } from "./context.js";
-import { checkPermission } from "./permissions.js";
-import { appendMessage, loadMessages } from "./session.js";
-import { toolMap, toolSpecs } from "./tools.js";
+import { loadedContextFiles, systemPrompt } from "./config/context.js";
+import { checkPermission } from "./core/permissions.js";
+import { toolMap, toolSpecs } from "./core/tools.js";
+import { appendMessage, loadMessages } from "./session/session.js";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "hitch-"));
 const read = toolMap.get("read_file")!;

@@ -1,5 +1,5 @@
+import { c } from "../colors.js";
 import type { Tool } from "./tools.js";
-import { c } from "./ui.js";
 
 export type PermMode = "ask" | "yolo" | "readonly";
 

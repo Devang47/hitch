@@ -12,7 +12,7 @@ import { type FakeServer, startFakeOpenRouter } from "./testkit.js";
 // Uses async spawn, NOT execFileSync: the fake server runs in this process, and a
 // synchronous spawn would block the event loop so the server could never answer
 // the child's request — deadlock.
-const CLI = resolve("dist/cli.js");
+const CLI = resolve("dist/cli/index.js");
 let fake: FakeServer;
 let dir: string;
 

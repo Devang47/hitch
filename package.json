@@ -4,7 +4,7 @@
   "description": "A minimal, OpenRouter-native coding agent. pi's spirit — four tools, tiny prompt — plus a permission gate, a live cost meter, and session resume.",
   "type": "module",
   "bin": {
-    "hitch": "dist/cli.js"
+    "hitch": "dist/cli/index.js"
   },
   "files": [
     "dist"
@@ -13,9 +13,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "tsx src/cli.ts",
+    "dev": "tsx src/cli/index.ts",
     "build": "tsc",
-    "start": "node dist/cli.js",
+    "start": "node dist/cli/index.js",
     "check": "biome check src",
     "fix": "biome check --write src",
     "test": "tsc && node --import tsx --test src/*.test.ts",

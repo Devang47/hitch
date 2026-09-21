@@ -7,6 +7,7 @@ import {
   statSync,
 } from "node:fs";
 import { join } from "node:path";
+import type { Message } from "../types.js";
 
 // ponytail: flat JSONL log per session, no branching tree (pi has one). Resume
 // replays the whole file. Add a tree if branch/rewind ever becomes a real need.
@@ -17,16 +18,16 @@ export function newSessionPath(): string {
   return join(DIR, `${Date.now()}.jsonl`);
 }
 
-export function appendMessage(path: string, message: unknown): void {
+export function appendMessage(path: string, message: Message): void {
   appendFileSync(path, `${JSON.stringify(message)}\n`);
 }
 
-export function loadMessages(path: string): any[] {
+export function loadMessages(path: string): Message[] {
   if (!existsSync(path)) return [];
   return readFileSync(path, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line));
+    .map((line) => JSON.parse(line) as Message);
 }
 
 /** Most recently modified session file in this directory, if any. */

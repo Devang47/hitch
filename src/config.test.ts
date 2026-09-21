@@ -3,8 +3,14 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, test } from "node:test";
-import { fetchCatalog, searchModels } from "./models.js";
-import { configFile, resolveApiKey, resolveModel, setApiKey, setDefaultModel } from "./settings.js";
+import { fetchCatalog, searchModels } from "./config/models.js";
+import {
+  configFile,
+  resolveApiKey,
+  resolveModel,
+  setApiKey,
+  setDefaultModel,
+} from "./config/settings.js";
 
 // Fresh sandbox home per test; settings/models read HITCH_HOME lazily.
 beforeEach(() => {
