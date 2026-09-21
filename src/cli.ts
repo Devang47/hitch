@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "./loadenv.js"; // must be first: loads .env before config reads process.env
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import { type IO, runTurn } from "./agent.js";
@@ -6,11 +7,6 @@ import { loadedContextFiles, systemPrompt } from "./context.js";
 import { config } from "./llm.js";
 import type { PermMode } from "./permissions.js";
 import { appendMessage, latestSession, loadMessages, newSessionPath } from "./session.js";
-
-// Load ./.env if present (native since Node 20.12). No dotenv dependency.
-try {
-  process.loadEnvFile();
-} catch {}
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,

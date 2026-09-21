@@ -31,6 +31,7 @@ export async function runTurn(
       model: config.model,
       messages,
       tools: specs,
+      max_tokens: config.maxTokens,
       stream: true,
       stream_options: { include_usage: true },
       usage: { include: true },

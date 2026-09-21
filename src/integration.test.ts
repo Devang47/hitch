@@ -37,6 +37,7 @@ test("streams a text reply and accounts token usage", async () => {
   assert.deepEqual(usage, { prompt: 10, completion: 2, cost: 0.001 });
   assert.equal(seen.length, 1); // the assistant message
   assert.equal(fake.requests.length, 1);
+  assert.ok(fake.requests[0].max_tokens > 0, "sends a max_tokens cap"); // avoids the 402 credit-reservation trap
 });
 
 test("merges streamed tool-call fragments, runs the tool, and loops to completion", async () => {

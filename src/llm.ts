@@ -3,6 +3,11 @@ import OpenAI from "openai";
 /** Mutable so `/model` can switch it mid-session. */
 export const config = {
   model: process.env.HITCH_MODEL || "anthropic/claude-sonnet-4.5",
+  // Cap output per turn. Without it, providers reserve their full max output
+  // (tens of thousands of tokens), which 402s low-balance keys and over-reserves
+  // credit. ponytail: a hard cap can truncate a very large single edit mid-JSON;
+  // raise HITCH_MAX_TOKENS if that bites.
+  maxTokens: Number(process.env.HITCH_MAX_TOKENS) || 8192,
 };
 
 // Constructed lazily: the OpenAI client throws on a missing key at construction,
