@@ -16,14 +16,14 @@ Any of 300+ models, one API key. Swap models mid-session with `/model`.
 ## Quickstart
 
 ```bash
-npx hitch    # first run prompts for your OpenRouter key and a default model
+npx @devang47/hitch    # first run prompts for your OpenRouter key and a default model
 ```
 
 Or set the key up front and go in one shot:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...   # https://openrouter.ai/keys
-npx hitch "explain what this repo does, then add a test for the parser"
+npx @devang47/hitch "explain what this repo does, then add a test for the parser"
 ```
 
 Or clone and run from source:
