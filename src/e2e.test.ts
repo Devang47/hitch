@@ -33,7 +33,7 @@ function run(
   return new Promise((res, rej) => {
     const child = spawn(process.execPath, [CLI, ...args], {
       cwd: dir,
-      env: { ...process.env, ...extraEnv },
+      env: { ...process.env, HITCH_HOME: dir, ...extraEnv }, // isolate config from the real ~/.hitch
     });
     let stdout = "";
     let stderr = "";

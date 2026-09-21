@@ -36,6 +36,7 @@
   "homepage": "https://github.com/Devang47/hitch#readme",
   "bugs": "https://github.com/Devang47/hitch/issues",
   "dependencies": {
+    "@inquirer/prompts": "^8.7.2",
     "openai": "^7.20.0",
     "zod": "^4.6.5"
   },

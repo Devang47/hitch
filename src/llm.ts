@@ -1,8 +1,9 @@
 import OpenAI from "openai";
+import { resolveApiKey, resolveModel } from "./settings.js";
 
-/** Mutable so `/model` can switch it mid-session. */
+/** Mutable so `/model` can switch it mid-session. cli.ts refines model with the --model flag. */
 export const config = {
-  model: process.env.HITCH_MODEL || "anthropic/claude-sonnet-4.5",
+  model: resolveModel(),
   // Cap output per turn. Without it, providers reserve their full max output
   // (tens of thousands of tokens), which 402s low-balance keys and over-reserves
   // credit. ponytail: a hard cap can truncate a very large single edit mid-JSON;
@@ -30,7 +31,7 @@ export function client(): OpenAI {
   if (!instance) {
     instance = new OpenAI({
       baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
-      apiKey: process.env.OPENROUTER_API_KEY,
+      apiKey: resolveApiKey(),
       defaultHeaders: {
         "HTTP-Referer": "https://github.com/Devang47/hitch",
         "X-Title": "hitch",

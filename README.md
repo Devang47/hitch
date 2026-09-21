@@ -16,6 +16,12 @@ Any of 300+ models, one API key. Swap models mid-session with `/model`.
 ## Quickstart
 
 ```bash
+npx hitch    # first run prompts for your OpenRouter key and a default model
+```
+
+Or set the key up front and go in one shot:
+
+```bash
 export OPENROUTER_API_KEY=sk-or-...   # https://openrouter.ai/keys
 npx hitch "explain what this repo does, then add a test for the parser"
 ```
@@ -41,11 +47,16 @@ hitch [prompt]           start a session (optional first prompt)
   -h, --help             show this help
 
 In-session commands:
-  /model [id]            show or switch the model
+  /model [query]         pick the model for THIS session (searchable, live from OpenRouter)
+  /models --default      set the default model for all new sessions
+  /models --refresh      refresh the model list
   /cost                  show token + cost totals
   /help                  show help
   /exit                  quit
 ```
+
+Model choice is scoped: `/model` changes only the current session; `/models --default`
+(and first-run setup) sets the global default in `~/.hitch/config.json` for new sessions.
 
 ## The four tools
 
@@ -69,12 +80,14 @@ hitch loads instructions from `AGENTS.md` (project root) and `~/.hitch/AGENTS.md
 
 | Env var | Purpose |
 |---------|---------|
-| `OPENROUTER_API_KEY` | required — your OpenRouter key |
-| `HITCH_MODEL` | default model id (any from openrouter.ai/models) |
+| `OPENROUTER_API_KEY` | your OpenRouter key (or set it via first-run setup) |
+| `HITCH_MODEL` | override the default model for this run (any id from openrouter.ai/models) |
 | `HITCH_MAX_TOKENS` | max output tokens per turn (default 8192) |
 | `HITCH_PROVIDER` | OpenRouter [provider routing](https://openrouter.ai/docs/features/provider-routing) as JSON, e.g. `{"only":["morph"]}` |
+| `HITCH_HOME` | config/cache dir (default `~/.hitch`) |
 
-A `.env` file in the working directory is loaded automatically.
+The key and default model persist in `~/.hitch/config.json` (mode `600`). A `.env`
+file in the working directory is loaded automatically, and env vars override the config file.
 
 ## Safety
 
