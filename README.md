@@ -23,7 +23,7 @@ npx hitch "explain what this repo does, then add a test for the parser"
 Or clone and run from source:
 
 ```bash
-git clone https://github.com/kitatsu/hitch && cd hitch
+git clone https://github.com/Devang47/hitch && cd hitch
 npm install
 cp .env.example .env    # add your key
 npm run dev             # interactive session

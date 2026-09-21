@@ -29,6 +29,12 @@
     "harness"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Devang47/hitch.git"
+  },
+  "homepage": "https://github.com/Devang47/hitch#readme",
+  "bugs": "https://github.com/Devang47/hitch/issues",
   "dependencies": {
     "openai": "^7.20.0",
     "zod": "^4.6.5"
