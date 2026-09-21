@@ -14,7 +14,7 @@ beforeEach(() => {
 });
 
 test("resolveModel precedence: flag > env > config > fallback", () => {
-  assert.equal(resolveModel(), "anthropic/claude-sonnet-4.5");
+  assert.equal(resolveModel(), "nvidia/nemotron-3.5-lightning:free");
   setDefaultModel("cfg/model");
   assert.equal(resolveModel(), "cfg/model");
   process.env.HITCH_MODEL = "env/model";

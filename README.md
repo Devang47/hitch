@@ -40,7 +40,7 @@ npm run dev             # interactive session
 ```
 hitch [prompt]           start a session (optional first prompt)
 
-  --model <id>           model to use (default: $HITCH_MODEL or anthropic/claude-sonnet-4.5)
+  --model <id>           model to use (default: a free model; override w/ $HITCH_MODEL or config)
   --resume               continue the most recent session in this directory
   --yolo                 auto-approve every tool call (no prompts)
   --readonly             allow reads only; block writes and commands

@@ -2,7 +2,9 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const FALLBACK_MODEL = "anthropic/claude-sonnet-4.5";
+// Free by default so hitch runs at $0 out of the box. Free slugs rotate — swap
+// via `/models --default`, HITCH_MODEL, or --model.
+const FALLBACK_MODEL = "nvidia/nemotron-3.5-lightning:free";
 
 type Config = { apiKey?: string; defaultModel?: string };
 
