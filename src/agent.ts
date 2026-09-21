@@ -32,6 +32,7 @@ export async function runTurn(
       messages,
       tools: specs,
       max_tokens: config.maxTokens,
+      provider: config.provider, // OpenRouter routing; dropped from the body when undefined
       stream: true,
       stream_options: { include_usage: true },
       usage: { include: true },

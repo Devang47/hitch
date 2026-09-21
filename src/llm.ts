@@ -8,7 +8,20 @@ export const config = {
   // credit. ponytail: a hard cap can truncate a very large single edit mid-JSON;
   // raise HITCH_MAX_TOKENS if that bites.
   maxTokens: Number(process.env.HITCH_MAX_TOKENS) || 8192,
+  // Optional OpenRouter provider routing, as JSON (e.g. pin a provider, disable
+  // fallbacks). Passed straight through to the request. Undefined = OpenRouter decides.
+  provider: parseProvider(process.env.HITCH_PROVIDER),
 };
+
+function parseProvider(raw: string | undefined): unknown {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.error(`hitch: ignoring HITCH_PROVIDER, not valid JSON: ${raw}`);
+    return undefined;
+  }
+}
 
 // Constructed lazily: the OpenAI client throws on a missing key at construction,
 // and we don't want `--help` (or the friendly key check) to trip over that.

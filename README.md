@@ -71,6 +71,8 @@ hitch loads instructions from `AGENTS.md` (project root) and `~/.hitch/AGENTS.md
 |---------|---------|
 | `OPENROUTER_API_KEY` | required — your OpenRouter key |
 | `HITCH_MODEL` | default model id (any from openrouter.ai/models) |
+| `HITCH_MAX_TOKENS` | max output tokens per turn (default 8192) |
+| `HITCH_PROVIDER` | OpenRouter [provider routing](https://openrouter.ai/docs/features/provider-routing) as JSON, e.g. `{"only":["morph"]}` |
 
 A `.env` file in the working directory is loaded automatically.
 
