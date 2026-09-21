@@ -1,4 +1,5 @@
 import type { Tool } from "./tools.js";
+import { c } from "./ui.js";
 
 export type PermMode = "ask" | "yolo" | "readonly";
 
@@ -19,9 +20,8 @@ export async function checkPermission(
   if (mode === "yolo" || approveAll) return { ok: true };
 
   const detail = args.command ?? args.path ?? "";
-  const answer = (await ask(`  allow ${tool.name} \`${detail}\`? [y]es / [n]o / [a]ll: `))
-    .trim()
-    .toLowerCase();
+  const q = `  ${c.yellow("allow")} ${c.bold(tool.name)} ${c.dim(`\`${detail}\``)} ${c.dim("[y]es / [n]o / [a]ll:")} `;
+  const answer = (await ask(q)).trim().toLowerCase();
   if (answer === "a" || answer === "all") {
     approveAll = true;
     return { ok: true };

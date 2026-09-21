@@ -1,6 +1,7 @@
 import { client, config } from "./llm.js";
 import { checkPermission, type PermMode } from "./permissions.js";
 import { toolMap, toolSpecs } from "./tools.js";
+import { c } from "./ui.js";
 
 export type IO = {
   out: (text: string) => void;
@@ -93,17 +94,17 @@ async function runTool(call: any, io: IO, mode: PermMode): Promise<string> {
     return `Error: could not parse arguments for ${tool.name}`;
   }
 
-  io.out(`\n  ⚙ ${tool.name} ${preview(args)}\n`);
+  io.out(`\n  ${c.cyan("⚙")} ${c.bold(tool.name)} ${c.dim(preview(args))}\n`);
   const permission = await checkPermission(tool, args, mode, io.ask);
   if (!permission.ok) return `Tool call rejected: ${permission.reason}`;
 
   try {
     const result = await tool.run(tool.parameters.parse(args));
-    io.out(`  ↳ ${truncate(result, 400)}\n`);
+    io.out(`  ${c.dim(`↳ ${truncate(result, 400)}`)}\n`);
     return result;
   } catch (e: any) {
     const message = `Error: ${e.message}`;
-    io.out(`  ↳ ${message}\n`);
+    io.out(`  ${c.dim("↳")} ${c.red(message)}\n`);
     return message;
   }
 }

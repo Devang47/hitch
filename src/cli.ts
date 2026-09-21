@@ -10,6 +10,16 @@ import { fetchCatalog, pickModel, searchModels } from "./models.js";
 import type { PermMode } from "./permissions.js";
 import { appendMessage, latestSession, loadMessages, newSessionPath } from "./session.js";
 import { configFile, resolveApiKey, resolveModel, setApiKey, setDefaultModel } from "./settings.js";
+import { banner, c, promptLabel } from "./ui.js";
+
+const COMMANDS: [string, string][] = [
+  ["/model", "pick the model for this session"],
+  ["/models --default", "set the default model for all new sessions"],
+  ["/models --refresh", "refresh the model list from OpenRouter"],
+  ["/cost", "token + cost totals"],
+  ["/help", "show help"],
+  ["/exit", "quit"],
+];
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -40,8 +50,9 @@ if (!resolveApiKey()) {
 
 config.model = resolveModel(values.model); // --model > $HITCH_MODEL > config default > fallback
 const mode: PermMode = values.yolo ? "yolo" : values.readonly ? "readonly" : "ask";
+const cwd = process.cwd();
 
-const rl = createInterface({ input: process.stdin, output: process.stdout });
+const rl = createInterface({ input: process.stdin, output: process.stdout, completer });
 const io: IO = { out: (s) => process.stdout.write(s), ask: (q) => rl.question(q) };
 
 // Session: resume the latest, or start fresh.
@@ -63,7 +74,15 @@ const totals: { prompt: number; completion: number; cost: number } = {
   cost: 0,
 };
 
-header(resumed !== undefined);
+console.log(
+  banner({
+    model: config.model,
+    cwd,
+    mode,
+    context: loadedContextFiles(),
+    resumed: resumed !== undefined,
+  }),
+);
 
 // Optional first prompt from the command line.
 const initial = positionals.join(" ").trim();
@@ -78,12 +97,16 @@ if (initial && !process.stdin.isTTY) {
 for (;;) {
   let line: string;
   try {
-    line = (await rl.question("\n› ")).trim();
+    line = (await rl.question(`\n${promptLabel(cwd)}`)).trim();
   } catch {
     break; // EOF / Ctrl-D
   }
   if (!line) continue;
   if (line === "/exit" || line === "/quit") break;
+  if (line === "/") {
+    printCommands();
+    continue;
+  }
   if (line === "/help") {
     printHelp();
     continue;
@@ -96,13 +119,26 @@ for (;;) {
     try {
       await handleModelCommand(line);
     } catch (e: any) {
-      console.error(dim(`model command failed: ${e.message}`));
+      console.error(`${c.red("model command failed:")} ${c.dim(e.message)}`);
     }
     continue;
   }
   await turn(line);
 }
 rl.close();
+
+// Tab completion for slash commands (also shows the list when the buffer is just "/").
+function completer(line: string): [string[], string] {
+  const names = COMMANDS.map(([n]) => n);
+  if (!line.startsWith("/")) return [[], line];
+  const hits = names.filter((n) => n.startsWith(line));
+  return [hits.length ? hits : names, line];
+}
+
+function printCommands(): void {
+  console.log(c.dim("commands (Tab to complete):"));
+  for (const [name, desc] of COMMANDS) console.log(`  ${c.cyan(name.padEnd(19))} ${c.dim(desc)}`);
+}
 
 async function turn(text: string): Promise<void> {
   const user = { role: "user", content: text };
@@ -113,16 +149,24 @@ async function turn(text: string): Promise<void> {
     totals.prompt += u.prompt;
     totals.completion += u.completion;
     totals.cost += u.cost;
-    process.stdout.write(`\n${dim(costLine(totals))}\n`);
+    process.stdout.write(`\n${costLine(totals)}\n`);
   } catch (e: any) {
-    console.error(`\n${dim(`error: ${e.message}`)}`);
+    const msg = e.message ?? String(e);
+    console.error(`\n${c.red("error")} ${c.dim(msg)}`);
+    if (/402|more credits|max_tokens/i.test(msg)) {
+      console.error(
+        c.dim(
+          "  hint: lower HITCH_MAX_TOKENS, switch to a cheaper/free model with /model, or add OpenRouter credit.",
+        ),
+      );
+    }
   }
 }
 
 async function handleModelCommand(line: string): Promise<void> {
   if (line === "/models --refresh") {
-    process.stdout.write("refreshing model list… ");
-    console.log(`${(await fetchCatalog(true)).length} models`);
+    process.stdout.write(c.dim("refreshing model list… "));
+    console.log(c.dim(`${(await fetchCatalog(true)).length} models`));
     return;
   }
   if (line === "/models --default") {
@@ -130,7 +174,9 @@ async function handleModelCommand(line: string): Promise<void> {
     if (id) {
       setDefaultModel(id);
       config.model = id;
-      console.log(`default model → ${id} (all new sessions + this one)`);
+      console.log(
+        `${c.green("default model →")} ${c.bold(id)} ${c.dim("(all new sessions + this one)")}`,
+      );
     }
     return;
   }
@@ -144,7 +190,7 @@ async function handleModelCommand(line: string): Promise<void> {
   if (!id) id = await withRlPaused(() => pickModel());
   if (id) {
     config.model = id;
-    console.log(`model → ${id} (this session)`);
+    console.log(`${c.green("model →")} ${c.bold(id)} ${c.dim("(this session)")}`);
   }
 }
 
@@ -159,7 +205,10 @@ async function withRlPaused<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 async function onboard(): Promise<void> {
-  console.log("Welcome to hitch — let's set up.\n");
+  console.log(
+    banner({ model: resolveModel(), cwd: process.cwd(), mode: "ask", context: [], resumed: false }),
+  );
+  console.log(`\n${c.bold("Welcome!")} Let's set you up.\n`);
   const key = (
     await password({ message: "OpenRouter API key (https://openrouter.ai/keys):", mask: "*" })
   ).trim();
@@ -177,45 +226,35 @@ async function onboard(): Promise<void> {
     const id = await pickModel();
     if (id) {
       setDefaultModel(id);
-      console.log(`default model → ${id}`);
+      console.log(`${c.green("default model →")} ${c.bold(id)}`);
     }
   }
-  console.log(`Saved to ${configFile()}\n`);
-}
-
-function header(wasResumed: boolean): void {
-  const files = loadedContextFiles();
-  console.log(dim(`hitch · ${config.model} · mode: ${mode}${wasResumed ? " · resumed" : ""}`));
-  console.log(dim(`cwd: ${process.cwd()}`));
-  console.log(dim(`context: ${files.length ? files.join(", ") : "none"} · /help for commands`));
+  console.log(c.dim(`Saved to ${configFile()}\n`));
 }
 
 function costLine(t: { prompt: number; completion: number; cost: number }): string {
-  const tokens = `${t.prompt + t.completion} tok (${t.prompt}+${t.completion})`;
-  return t.cost > 0 ? `$${t.cost.toFixed(4)} · ${tokens}` : tokens;
-}
-
-function dim(s: string): string {
-  return `\x1b[2m${s}\x1b[0m`;
+  const tok = c.dim(`${t.prompt + t.completion} tok (${t.prompt}+${t.completion})`);
+  return t.cost > 0 ? `${c.green(`$${t.cost.toFixed(4)}`)} ${c.dim("·")} ${tok}` : tok;
 }
 
 function printHelp(): void {
-  console.log(`hitch — a minimal OpenRouter coding agent
+  console.log(`${c.bold("hitch")} — a minimal OpenRouter coding agent
 
-usage: hitch [prompt] [flags]
+${c.dim("usage:")} hitch [prompt] [flags]
 
-flags:
+${c.dim("flags:")}
   --model <id>   model for this run (default: config default, or $HITCH_MODEL)
   --resume       continue the most recent session in this directory
   --yolo         auto-approve every tool call
   --readonly     allow reads only; block writes and commands
   -h, --help     show this help
 
-in-session:
-  /model [query]      pick the model for THIS session (searchable)
+${c.dim("in-session:")}
+  /              list commands (Tab completes them)
+  /model [query] pick the model for THIS session (searchable)
   /models --default   set the default model for all new sessions
   /models --refresh   refresh the model list from OpenRouter
-  /cost               token + cost totals
-  /help               this help
-  /exit               quit`);
+  /cost          token + cost totals
+  /help          this help
+  /exit          quit`);
 }
