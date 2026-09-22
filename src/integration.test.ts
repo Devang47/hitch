@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { runTurn } from "./core/agent.js";
+import { config } from "./core/llm.js";
 import { type FakeServer, startFakeOpenRouter } from "./testkit.js";
 
 let fake: FakeServer;
@@ -66,6 +67,46 @@ test("merges streamed tool-call fragments, runs the tool, and loops to completio
   const toolResult = messages.find((m) => m.role === "tool");
   assert.match(toolResult.content, /hi/);
   assert.equal(messages.at(-1).content, "done");
+});
+
+test("fallback chain sends OpenRouter's `models` array; none sends plain model", async () => {
+  const savedFallbacks = config.fallbacks;
+  const savedModel = config.model;
+  try {
+    fake.setResponses([{ deltas: [{ content: "ok" }] }]);
+    config.model = "a/primary";
+    config.fallbacks = ["b/backup", "c/backup"];
+    await runTurn([{ role: "user", content: "hi" }], noop, "yolo", () => {});
+    assert.deepEqual(fake.requests[0].models, ["a/primary", "b/backup", "c/backup"]);
+
+    fake.setResponses([{ deltas: [{ content: "ok" }] }]);
+    config.fallbacks = [];
+    await runTurn([{ role: "user", content: "hi" }], noop, "yolo", () => {});
+    assert.equal(fake.requests[0].models, undefined, "no `models` key without fallbacks");
+  } finally {
+    config.fallbacks = savedFallbacks;
+    config.model = savedModel;
+  }
+});
+
+test("caching adds a system-prompt cache_control breakpoint only for anthropic/gemini", async () => {
+  const savedModel = config.model;
+  try {
+    fake.setResponses([{ deltas: [{ content: "ok" }] }]);
+    config.model = "anthropic/claude-x";
+    const system = { role: "system", content: "you are hitch" };
+    await runTurn([system, { role: "user", content: "hi" }] as any, noop, "yolo", () => {});
+    const sent = fake.requests[0].messages[0];
+    assert.equal(sent.content[0].cache_control.type, "ephemeral");
+    assert.equal(sent.content[0].text, "you are hitch");
+
+    fake.setResponses([{ deltas: [{ content: "ok" }] }]);
+    config.model = "openai/gpt";
+    await runTurn([system, { role: "user", content: "hi" }] as any, noop, "yolo", () => {});
+    assert.equal(fake.requests[0].messages[0].content, "you are hitch", "unchanged for others");
+  } finally {
+    config.model = savedModel;
+  }
 });
 
 test("a denied tool call is not executed", async () => {

@@ -72,13 +72,17 @@ ${c.dim("flags:")}
   --resume       continue the most recent session in this directory
   --yolo         auto-approve every tool call
   --readonly     allow reads only; block writes and commands
+  --docker       run the bash tool inside a throwaway container ($HITCH_DOCKER_IMAGE)
   -h, --help     show this help
+
+${c.dim("config:")} ~/.hitch/config.json → fallbackModels[], mcpServers{} ${c.dim("·")} env HITCH_FALLBACK_MODELS
 
 ${c.dim("in-session:")}
   /              list commands (Tab completes them)
   /model [query] pick the model for THIS session (searchable)
   /models --default   set the default model for all new sessions
   /models --refresh   refresh the model list from OpenRouter
+  /mcp [add|remove]   list or manage MCP servers (connects live, no restart)
   /cost          token + cost totals
   /help          this help
   /exit          quit`);

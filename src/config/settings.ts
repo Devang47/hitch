@@ -6,7 +6,15 @@ import { join } from "node:path";
 // via `/models --default`, HITCH_MODEL, or --model.
 const FALLBACK_MODEL = "nvidia/nemotron-3.5-lightning:free";
 
-type Config = { apiKey?: string; defaultModel?: string };
+/** One MCP server: a command hitch spawns and talks to over stdio. */
+export type McpServer = { command: string; args?: string[]; env?: Record<string, string> };
+
+type Config = {
+  apiKey?: string;
+  defaultModel?: string;
+  fallbackModels?: string[];
+  mcpServers?: Record<string, McpServer>;
+};
 
 /** Config/cache dir. HITCH_HOME relocates it (also the seam tests use). */
 export function hitchHome(): string {
@@ -37,6 +45,30 @@ export function resolveApiKey(): string | undefined {
 }
 export function resolveModel(flag?: string): string {
   return flag || process.env.HITCH_MODEL || read().defaultModel || FALLBACK_MODEL;
+}
+/** Ordered models tried after the primary via OpenRouter's `models` param.
+ *  Env (comma-separated) wins over the config array. */
+export function resolveFallbacks(): string[] {
+  const env = process.env.HITCH_FALLBACK_MODELS;
+  if (env)
+    return env
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  return read().fallbackModels ?? [];
+}
+export function resolveMcpServers(): Record<string, McpServer> {
+  return read().mcpServers ?? {};
+}
+export function setMcpServer(name: string, server: McpServer): void {
+  write({ mcpServers: { ...read().mcpServers, [name]: server } });
+}
+export function removeMcpServer(name: string): boolean {
+  const mcpServers = { ...read().mcpServers };
+  if (!(name in mcpServers)) return false;
+  delete mcpServers[name];
+  write({ mcpServers });
+  return true;
 }
 export function setApiKey(apiKey: string): void {
   write({ apiKey });

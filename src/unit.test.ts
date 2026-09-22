@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { loadedContextFiles, systemPrompt } from "./config/context.js";
+import { mcpToolName } from "./core/mcp.js";
 import { checkPermission } from "./core/permissions.js";
-import { toolMap, toolSpecs } from "./core/tools.js";
+import { dockerCommand, wrapCommand } from "./core/sandbox.js";
+import { registerTools, toolMap, toolSpecs, unregisterTools } from "./core/tools.js";
 import { appendMessage, loadMessages } from "./session/session.js";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "hitch-"));
@@ -91,6 +93,46 @@ test("toolSpecs emits a valid function schema per tool", () => {
     assert.ok(s.function.name);
     assert.equal((s.function.parameters as any).type, "object");
   }
+});
+
+// --- sandbox (--docker) ---
+
+test("wrapCommand is a no-op when the sandbox is off", () => {
+  assert.equal(wrapCommand("echo hi"), "echo hi");
+});
+
+test("dockerCommand single-quotes cwd and the command (injection-safe)", () => {
+  const wrapped = dockerCommand("/w", "abc123", "echo 'hi'");
+  assert.equal(wrapped, `docker exec -w '/w' abc123 sh -c 'echo '\\''hi'\\'''`);
+});
+
+// --- mcp tool naming ---
+
+test("mcpToolName namespaces and sanitizes to OpenAI-safe chars", () => {
+  assert.equal(mcpToolName("fs", "read_file"), "mcp__fs__read_file");
+  assert.equal(mcpToolName("my.server", "do:it"), "mcp__my_server__do_it");
+  assert.ok(mcpToolName("s".repeat(80), "t").length <= 64);
+});
+
+test("registerTools/unregisterTools add and remove runtime tools (MCP raw jsonSchema)", () => {
+  const before = toolSpecs().length;
+  registerTools([
+    {
+      name: "mcp__x__do",
+      description: "d",
+      jsonSchema: { type: "object", properties: {} },
+      risk: "exec",
+      run: async () => "ok",
+    },
+  ]);
+  const spec = toolSpecs().find((s) => s.function.name === "mcp__x__do");
+  assert.ok(spec, "registered tool appears in specs");
+  assert.equal((spec!.function.parameters as any).type, "object"); // raw jsonSchema passed through
+  assert.ok(toolMap.has("mcp__x__do"));
+
+  unregisterTools(["mcp__x__do"]);
+  assert.equal(toolSpecs().length, before, "count restored after unregister");
+  assert.equal(toolMap.has("mcp__x__do"), false);
 });
 
 // --- permissions (security boundary) ---

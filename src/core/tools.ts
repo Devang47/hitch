@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { wrapCommand } from "./sandbox.js";
 
 const execAsync = promisify(exec);
 
@@ -12,7 +13,8 @@ export type Risk = "safe" | "write" | "exec";
 export type Tool = {
   name: string;
   description: string;
-  parameters: z.ZodType;
+  parameters?: z.ZodType; // built-in tools validate/normalize args with zod
+  jsonSchema?: Record<string, unknown>; // MCP tools carry a raw JSON Schema instead
   risk: Risk;
   run: (args: any) => Promise<string>;
 };
@@ -94,7 +96,7 @@ const bash: Tool = {
   }),
   run: async ({ command, timeout_ms = 120_000 }) => {
     try {
-      const { stdout, stderr } = await execAsync(command, {
+      const { stdout, stderr } = await execAsync(wrapCommand(command), {
         timeout: timeout_ms,
         maxBuffer: 10 * 1024 * 1024,
       });
@@ -110,14 +112,34 @@ const bash: Tool = {
 export const tools: Tool[] = [read, write, edit, bash];
 export const toolMap = new Map(tools.map((t) => [t.name, t]));
 
-/** OpenAI/OpenRouter tool specs, JSON schema derived from each tool's zod parameters. */
+/** Add tools discovered at runtime (e.g. from MCP servers) to the live set. */
+export function registerTools(extra: Tool[]): void {
+  for (const t of extra) {
+    tools.push(t);
+    toolMap.set(t.name, t);
+  }
+}
+
+/** Remove previously-registered tools by name (e.g. on MCP disconnect). */
+export function unregisterTools(names: string[]): void {
+  const drop = new Set(names);
+  for (let i = tools.length - 1; i >= 0; i--) {
+    if (drop.has(tools[i]!.name)) tools.splice(i, 1);
+  }
+  for (const n of names) toolMap.delete(n);
+}
+
+/** OpenAI/OpenRouter tool specs: raw JSON schema (MCP) or derived from zod (built-ins). */
 export function toolSpecs() {
   return tools.map((t) => ({
     type: "function" as const,
     function: {
       name: t.name,
       description: t.description,
-      parameters: z.toJSONSchema(t.parameters) as Record<string, unknown>,
+      parameters: (t.jsonSchema ?? z.toJSONSchema(t.parameters as z.ZodType)) as Record<
+        string,
+        unknown
+      >,
     },
   }));
 }

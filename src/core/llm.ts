@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { resolveApiKey, resolveModel } from "../config/settings.js";
+import { resolveApiKey, resolveFallbacks, resolveModel } from "../config/settings.js";
 
 /** Mutable so `/model` can switch it mid-session. cli refines model with the --model flag. */
 export const config = {
@@ -12,6 +12,9 @@ export const config = {
   // Optional OpenRouter provider routing, as JSON (e.g. pin a provider, disable
   // fallbacks). Passed straight through to the request. Undefined = OpenRouter decides.
   provider: parseProvider(process.env.HITCH_PROVIDER),
+  // Ordered fallback models. When non-empty, sent as OpenRouter's `models` array
+  // ([primary, ...fallbacks]) so it retries down the list when the primary errors.
+  fallbacks: resolveFallbacks(),
 };
 
 function parseProvider(raw: string | undefined): unknown {

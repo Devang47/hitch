@@ -20,11 +20,15 @@ export async function runTurn(
   const specs = toolSpecs();
 
   for (;;) {
+    // Fallback chain: [primary, ...fallbacks] as OpenRouter's `models` param.
+    // Undefined (no fallbacks) is dropped from the body, leaving plain `model`.
+    const models = config.fallbacks.length ? [config.model, ...config.fallbacks] : undefined;
     // `usage: { include: true }` is an OpenRouter extension (per-request cost in
     // `usage.cost`) that isn't in the OpenAI types, so the params are cast.
     const stream = (await client().chat.completions.create({
       model: config.model,
-      messages,
+      models, // OpenRouter fallback chain; dropped when undefined
+      messages: withCaching(messages, config.model),
       tools: specs,
       max_tokens: config.maxTokens,
       provider: config.provider, // OpenRouter routing; dropped from the body when undefined
@@ -93,7 +97,9 @@ async function runTool(call: ToolCall, io: IO, mode: PermMode): Promise<string> 
   if (!permission.ok) return `Tool call rejected: ${permission.reason}`;
 
   try {
-    const result = await tool.run(tool.parameters.parse(args));
+    // Built-ins validate/normalize with zod; MCP tools carry no zod schema, so
+    // pass their args straight through (the server validates its own input).
+    const result = await tool.run(tool.parameters ? tool.parameters.parse(args) : args);
     io.out(`  ${c.dim(`↳ ${truncate(result, 400)}`)}\n`);
     return result;
   } catch (e: any) {
@@ -101,6 +107,20 @@ async function runTool(call: ToolCall, io: IO, mode: PermMode): Promise<string> 
     io.out(`  ${c.dim("↳")} ${c.red(message)}\n`);
     return message;
   }
+}
+
+/** Add a prompt-caching breakpoint to the (large, stable) system prompt so
+ *  repeated turns reuse it. OpenRouter caches automatically for OpenAI/Grok/
+ *  DeepSeek and ignores unknown fields, but only Anthropic/Gemini need an
+ *  explicit `cache_control`, so we only rewrite to array-form content for those
+ *  two — no point risking array content on a provider that doesn't want it. */
+function withCaching(messages: Message[], model: string): any[] {
+  if (!/^(anthropic|google)\//.test(model)) return messages;
+  return messages.map((m) =>
+    m.role === "system" && typeof m.content === "string"
+      ? { ...m, content: [{ type: "text", text: m.content, cache_control: { type: "ephemeral" } }] }
+      : m,
+  );
 }
 
 function preview(args: any): string {
