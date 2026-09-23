@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { loadedContextFiles, systemPrompt } from "./config/context.js";
+import { compact, estimateTokens, guardContext } from "./core/compaction.js";
 import { mcpToolName } from "./core/mcp.js";
 import { checkPermission } from "./core/permissions.js";
 import { dockerCommand, wrapCommand } from "./core/sandbox.js";
@@ -133,6 +134,63 @@ test("registerTools/unregisterTools add and remove runtime tools (MCP raw jsonSc
   unregisterTools(["mcp__x__do"]);
   assert.equal(toolSpecs().length, before, "count restored after unregister");
   assert.equal(toolMap.has("mcp__x__do"), false);
+});
+
+// --- context compaction ---
+
+test("estimateTokens grows with content", () => {
+  const small = estimateTokens([{ role: "user", content: "hi" }]);
+  const big = estimateTokens([{ role: "user", content: "x".repeat(4000) }]);
+  assert.ok(small > 0 && big > small + 900);
+});
+
+test("guardContext drops oldest whole rounds, keeps system + recent + tool pairs", () => {
+  const msgs: any[] = [
+    { role: "system", content: "sys" },
+    { role: "user", content: "q1" },
+    {
+      role: "assistant",
+      content: null,
+      tool_calls: [{ id: "t1", function: { name: "x", arguments: "{}" } }],
+    },
+    { role: "tool", tool_call_id: "t1", content: "r1" },
+    { role: "assistant", content: "a1" },
+    { role: "user", content: "q2" },
+    { role: "assistant", content: "a2" },
+  ];
+  // limit = just enough for system + the last round → the q1 round must be dropped
+  const limit = estimateTokens([
+    { role: "system", content: "sys" },
+    { role: "user", content: "q2" },
+    { role: "assistant", content: "a2" },
+  ]);
+  const dropped = guardContext(msgs, limit);
+  assert.equal(dropped, 4);
+  assert.equal(msgs.length, 3);
+  assert.equal(msgs[0].content, "sys"); // system kept
+  assert.equal(msgs.at(-1).content, "a2"); // recent kept
+  assert.equal(
+    msgs.some((m) => m.role === "tool"),
+    false,
+    "no orphaned tool result — the whole round went",
+  );
+});
+
+test("compact folds old rounds into one summary, keeps recent verbatim", async () => {
+  const msgs: any[] = [
+    { role: "system", content: "sys" },
+    { role: "user", content: "q1" },
+    { role: "assistant", content: "a1" },
+    { role: "user", content: "q2" },
+    { role: "assistant", content: "a2" },
+    { role: "user", content: "q3" },
+    { role: "assistant", content: "a3" },
+  ];
+  const { summarized } = await compact(msgs, 1, async () => "SUMMARY");
+  assert.equal(summarized, 4); // the two oldest rounds
+  assert.equal(msgs[0].content, "sys");
+  assert.match(msgs[1].content, /SUMMARY/);
+  assert.equal(msgs.at(-1).content, "a3"); // last round kept verbatim
 });
 
 // --- permissions (security boundary) ---

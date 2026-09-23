@@ -15,11 +15,13 @@ export async function runTurn(
   io: IO,
   mode: PermMode,
   onMessage: (message: Message) => void,
+  signal?: AbortSignal,
 ): Promise<Usage> {
   const usage: Usage = { prompt: 0, completion: 0, cost: 0 };
   const specs = toolSpecs();
 
   for (;;) {
+    if (signal?.aborted) return usage; // interrupted between loop iterations
     // Fallback chain: [primary, ...fallbacks] as OpenRouter's `models` param.
     // Undefined (no fallbacks) is dropped from the body, leaving plain `model`.
     const models = config.fallbacks.length ? [config.model, ...config.fallbacks] : undefined;
@@ -34,17 +36,21 @@ export async function runTurn(
     try {
       // `usage: { include: true }` is an OpenRouter extension (per-request cost in
       // `usage.cost`) that isn't in the OpenAI types, so the params are cast.
-      const stream = (await client().chat.completions.create({
-        model: config.model,
-        models, // OpenRouter fallback chain; dropped when undefined
-        messages: withCaching(messages, config.model),
-        tools: specs,
-        max_tokens: config.maxTokens,
-        provider: config.provider, // OpenRouter routing; dropped from the body when undefined
-        stream: true,
-        stream_options: { include_usage: true },
-        usage: { include: true },
-      } as any)) as unknown as AsyncIterable<any>;
+      // `signal` lets Ctrl-C abort the in-flight request mid-stream.
+      const stream = (await client().chat.completions.create(
+        {
+          model: config.model,
+          models, // OpenRouter fallback chain; dropped when undefined
+          messages: withCaching(messages, config.model),
+          tools: specs,
+          max_tokens: config.maxTokens,
+          provider: config.provider, // OpenRouter routing; dropped from the body when undefined
+          stream: true,
+          stream_options: { include_usage: true },
+          usage: { include: true },
+        } as any,
+        { signal },
+      )) as unknown as AsyncIterable<any>;
 
       for await (const chunk of stream) {
         stopSpinner(); // first chunk arrived → drop the spinner before printing
@@ -72,6 +78,19 @@ export async function runTurn(
           usage.cost += (chunk.usage as any).cost ?? 0;
         }
       }
+    } catch (e: any) {
+      stopSpinner();
+      // Ctrl-C / abort: close the turn with whatever text streamed (no tool calls,
+      // so the message list stays valid) and hand control back to the REPL.
+      if (signal?.aborted || e?.name === "APIUserAbortError" || e?.name === "AbortError") {
+        if (printedText) io.out("\n");
+        io.out(`${c.yellow("⨯ interrupted")}\n`);
+        const partial: Message = { role: "assistant", content: content || "[interrupted]" };
+        messages.push(partial);
+        onMessage(partial);
+        return usage;
+      }
+      throw e;
     } finally {
       stopSpinner(); // idempotent: also clears on error / empty stream
     }
@@ -85,10 +104,16 @@ export async function runTurn(
     if (toolCalls.length === 0) return usage; // model is done for this turn
 
     for (const call of toolCalls) {
-      const result = await runTool(call, io, mode);
+      // Once interrupted, stop running tools but still answer each pending call
+      // with a stub so every tool_call keeps its matching tool result.
+      const result = signal?.aborted ? "[interrupted]" : await runTool(call, io, mode);
       const toolMessage: Message = { role: "tool", tool_call_id: call.id, content: result };
       messages.push(toolMessage);
       onMessage(toolMessage);
+    }
+    if (signal?.aborted) {
+      io.out(`${c.yellow("⨯ interrupted")}\n`);
+      return usage;
     }
     // loop: the model now sees the tool results
   }

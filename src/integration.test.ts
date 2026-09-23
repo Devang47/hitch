@@ -109,6 +109,16 @@ test("caching adds a system-prompt cache_control breakpoint only for anthropic/g
   }
 });
 
+test("an already-aborted signal returns without calling the model", async () => {
+  fake.setResponses([{ deltas: [{ content: "should not be sent" }] }]);
+  const ac = new AbortController();
+  ac.abort();
+  const messages: any[] = [{ role: "user", content: "hi" }];
+  const usage = await runTurn(messages, noop, "yolo", () => {}, ac.signal);
+  assert.equal(fake.requests.length, 0, "no request fired when already interrupted");
+  assert.deepEqual(usage, { prompt: 0, completion: 0, cost: 0 });
+});
+
 test("a denied tool call is not executed", async () => {
   const target = join(tmpdir(), `hitch-should-not-exist-${process.pid}.txt`);
   fake.setResponses([

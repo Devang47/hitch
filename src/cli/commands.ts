@@ -11,7 +11,8 @@ import {
   setDefaultModel,
   setMcpServer,
 } from "../config/settings.js";
-import { config } from "../core/llm.js";
+import { compact, estimateTokens } from "../core/compaction.js";
+import { client, config } from "../core/llm.js";
 import { connectedServers, connectServer, disconnectServer, toolCount } from "../core/mcp.js";
 import { appendMessage } from "../session/session.js";
 import type { Message, Usage } from "../types.js";
@@ -35,6 +36,7 @@ const COMMANDS: [string, string][] = [
   ["/mcp add", "connect + save a server: /mcp add <name> <command> [args...]"],
   ["/mcp remove", "disconnect + forget a server: /mcp remove <name>"],
   ["/btw", "answer a side question in a parallel process: /btw <question>"],
+  ["/compact", "summarize older turns to free up context"],
   ["/cost", "token + cost totals"],
   ["/help", "show help"],
   ["/exit", "quit"],
@@ -70,6 +72,7 @@ const handlers: Handler[] = [
     match: (l) => l === "/btw" || l.startsWith("/btw "),
     run: (l, ctx) => handleBtw(l.slice(4).trim(), ctx.messages),
   },
+  { match: (l) => l === "/compact", run: (_l, ctx) => handleCompact(ctx.messages) },
   { match: (l) => l === "/exit" || l === "/quit", run: () => "exit" },
 ];
 
@@ -248,4 +251,40 @@ async function handleBtw(question: string, messages: Message[]): Promise<void> {
       `↗ btw running in a parallel process (pid ${child.pid}) — keep working; answer appears when ready.`,
     ),
   );
+}
+
+/** `/compact`: summarize the older turns (via the model) into one message so a
+ *  long session keeps fitting the context window. In-memory only — the session
+ *  file keeps the full log, so --resume reloads everything. */
+async function handleCompact(messages: Message[]): Promise<void> {
+  const before = estimateTokens(messages);
+  process.stdout.write(c.dim("compacting… "));
+  try {
+    const { summarized } = await compact(messages, 4, summarizeTranscript);
+    if (!summarized) {
+      console.log(c.dim("nothing to gain from compacting yet — not enough old context"));
+      return;
+    }
+    console.log(
+      `${c.green("compacted")} ${summarized} msg(s) ${c.dim(`· ~${before} → ${estimateTokens(messages)} est. tokens`)}`,
+    );
+  } catch (e: any) {
+    console.log(`${c.red("compact failed:")} ${c.dim(e.message ?? String(e))}`);
+  }
+}
+
+async function summarizeTranscript(transcript: string): Promise<string> {
+  const res: any = await client().chat.completions.create({
+    model: config.model,
+    max_tokens: config.maxTokens,
+    messages: [
+      {
+        role: "system",
+        content:
+          "Summarize this coding-session transcript. Preserve decisions made, file paths, key code, and unfinished tasks. Be concise; output only the summary.",
+      },
+      { role: "user", content: transcript },
+    ],
+  } as any);
+  return res.choices?.[0]?.message?.content ?? "(summary unavailable)";
 }

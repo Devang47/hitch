@@ -94,7 +94,9 @@ ${c.dim("in-session:")}
   /models --refresh   refresh the model list from OpenRouter
   /mcp [add|remove]   list or manage MCP servers (connects live, no restart)
   /btw <question>     answer a side question in a parallel process (read-only)
+  /compact       summarize older turns to free up context
   /cost          token + cost totals
   /help          this help
-  /exit          quit`);
+  /exit          quit
+  ${c.dim("Ctrl-C interrupts the running turn; again at the prompt to quit")}`);
 }

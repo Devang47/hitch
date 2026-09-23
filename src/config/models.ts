@@ -41,6 +41,13 @@ function toModel(m: any): Model {
   };
 }
 
+/** Context window for a model from the on-disk cache (no network) — for the
+ *  per-turn context guard. Undefined when the catalog was never fetched or the
+ *  model isn't in it (then the guard is skipped). */
+export function cachedContextLimit(model: string): number | undefined {
+  return readCache()?.models.find((m) => m.id === model)?.contextLength || undefined;
+}
+
 /** Case-insensitive substring match on id + name. Empty query returns all. */
 export function searchModels(models: Model[], query: string): Model[] {
   const q = query.trim().toLowerCase();

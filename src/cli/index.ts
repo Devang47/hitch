@@ -4,8 +4,10 @@ import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import { c } from "../colors.js";
 import { loadedContextFiles, systemPrompt } from "../config/context.js";
+import { cachedContextLimit } from "../config/models.js";
 import { resolveApiKey, resolveMcpServers, resolveModel } from "../config/settings.js";
 import { runTurn } from "../core/agent.js";
+import { guardContext } from "../core/compaction.js";
 import { config } from "../core/llm.js";
 import { closeAll, connectAll, connectedServers } from "../core/mcp.js";
 import type { PermMode } from "../core/permissions.js";
@@ -95,6 +97,15 @@ const inputClosed = new Promise<void>((res) => {
 });
 rl.once("close", () => onInputClosed());
 
+// Ctrl-C: in a TTY, raw-mode stdin delivers it as readline's 'SIGINT' event (the
+// OS doesn't raise process SIGINT). Mid-turn it aborts the turn and stays in the
+// REPL; idle at the prompt it quits (closing rl → the cleanup path).
+let activeTurn: AbortController | null = null;
+rl.on("SIGINT", () => {
+  if (activeTurn) activeTurn.abort();
+  else rl.close();
+});
+
 // Session: resume the latest, or start fresh.
 let sessionPath: string;
 let messages: Message[];
@@ -159,10 +170,32 @@ async function turn(text: string): Promise<void> {
   const user: Message = { role: "user", content: text };
   messages.push(user);
   appendMessage(sessionPath, user);
+
+  // Context guard: drop oldest rounds to keep the request under the model's
+  // window (rough estimate; 20% headroom for the reply). /compact is the graceful
+  // alternative. Skipped when the model's limit isn't in the cached catalog.
+  const limit = cachedContextLimit(config.model);
+  if (limit) {
+    const dropped = guardContext(messages, Math.floor(limit * 0.8));
+    if (dropped)
+      console.log(
+        c.yellow(
+          `⚠ trimmed ${dropped} old message(s) to fit ~${Math.round(limit / 1000)}k context — /compact to summarize instead`,
+        ),
+      );
+  }
+
   io.out("\n"); // gap between the input line and the reply
   setTitle(cwd, "thinking");
+  activeTurn = new AbortController();
   try {
-    const u = await runTurn(messages, io, mode, (m) => appendMessage(sessionPath, m));
+    const u = await runTurn(
+      messages,
+      io,
+      mode,
+      (m) => appendMessage(sessionPath, m),
+      activeTurn.signal,
+    );
     totals.prompt += u.prompt;
     totals.completion += u.completion;
     totals.cost += u.cost;
@@ -183,6 +216,7 @@ async function turn(text: string): Promise<void> {
       );
     }
   } finally {
+    activeTurn = null;
     setTitle(cwd); // back to idle
   }
 }
