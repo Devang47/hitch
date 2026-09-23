@@ -23,44 +23,57 @@ export async function runTurn(
     // Fallback chain: [primary, ...fallbacks] as OpenRouter's `models` param.
     // Undefined (no fallbacks) is dropped from the body, leaving plain `model`.
     const models = config.fallbacks.length ? [config.model, ...config.fallbacks] : undefined;
-    // `usage: { include: true }` is an OpenRouter extension (per-request cost in
-    // `usage.cost`) that isn't in the OpenAI types, so the params are cast.
-    const stream = (await client().chat.completions.create({
-      model: config.model,
-      models, // OpenRouter fallback chain; dropped when undefined
-      messages: withCaching(messages, config.model),
-      tools: specs,
-      max_tokens: config.maxTokens,
-      provider: config.provider, // OpenRouter routing; dropped from the body when undefined
-      stream: true,
-      stream_options: { include_usage: true },
-      usage: { include: true },
-    } as any)) as unknown as AsyncIterable<any>;
 
     let content = "";
     let printedText = false;
     const toolCalls: ToolCall[] = [];
 
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta;
-      if (delta?.content) {
-        io.out(delta.content);
-        content += delta.content;
-        printedText = true;
+    // Spinner covers the wait for the first token (and any connect/HTTP error);
+    // cleared the instant output starts so it never interleaves with the reply.
+    const stopSpinner = startSpinner("thinking");
+    try {
+      // `usage: { include: true }` is an OpenRouter extension (per-request cost in
+      // `usage.cost`) that isn't in the OpenAI types, so the params are cast.
+      const stream = (await client().chat.completions.create({
+        model: config.model,
+        models, // OpenRouter fallback chain; dropped when undefined
+        messages: withCaching(messages, config.model),
+        tools: specs,
+        max_tokens: config.maxTokens,
+        provider: config.provider, // OpenRouter routing; dropped from the body when undefined
+        stream: true,
+        stream_options: { include_usage: true },
+        usage: { include: true },
+      } as any)) as unknown as AsyncIterable<any>;
+
+      for await (const chunk of stream) {
+        stopSpinner(); // first chunk arrived → drop the spinner before printing
+        const delta = chunk.choices[0]?.delta;
+        if (delta?.content) {
+          io.out(delta.content);
+          content += delta.content;
+          printedText = true;
+        }
+        // Tool-call fragments arrive split across chunks; merge them by index.
+        for (const tc of delta?.tool_calls ?? []) {
+          toolCalls[tc.index] ??= {
+            id: "",
+            type: "function",
+            function: { name: "", arguments: "" },
+          };
+          const call = toolCalls[tc.index]!; // just ensured present on the line above
+          if (tc.id) call.id = tc.id;
+          if (tc.function?.name) call.function.name += tc.function.name;
+          if (tc.function?.arguments) call.function.arguments += tc.function.arguments;
+        }
+        if (chunk.usage) {
+          usage.prompt += chunk.usage.prompt_tokens ?? 0;
+          usage.completion += chunk.usage.completion_tokens ?? 0;
+          usage.cost += (chunk.usage as any).cost ?? 0;
+        }
       }
-      // Tool-call fragments arrive split across chunks; merge them by index.
-      for (const tc of delta?.tool_calls ?? []) {
-        toolCalls[tc.index] ??= { id: "", type: "function", function: { name: "", arguments: "" } };
-        const call = toolCalls[tc.index]!; // just ensured present on the line above
-        if (tc.id) call.id = tc.id;
-        if (tc.function?.name) call.function.name += tc.function.name;
-        if (tc.function?.arguments) call.function.arguments += tc.function.arguments;
-      }
-      if (chunk.usage) {
-        usage.prompt += chunk.usage.prompt_tokens ?? 0;
-        usage.completion += chunk.usage.completion_tokens ?? 0;
-        usage.cost += (chunk.usage as any).cost ?? 0;
-      }
+    } finally {
+      stopSpinner(); // idempotent: also clears on error / empty stream
     }
     if (printedText) io.out("\n");
 
@@ -129,4 +142,31 @@ function preview(args: any): string {
 
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}… (+${text.length - max} chars)` : text;
+}
+
+/** Braille spinner with elapsed seconds, shown while waiting on the model.
+ *  Renders on stderr (stdout is owned by the REPL's readline — animating it
+ *  there corrupts the line) and rewrites one line: `\r\x1b[K` returns to column
+ *  0 and clears to end-of-line each frame, so nothing stacks or leaves residue.
+ *  TTY-only: a no-op when stderr is piped, keeping streamed output + tests clean.
+ *  Returns an idempotent stop() that erases the line. */
+function startSpinner(label: string): () => void {
+  const err = process.stderr;
+  if (!err.isTTY) return () => {};
+  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  const start = Date.now();
+  let i = 0;
+  const tick = () => {
+    const s = Math.floor((Date.now() - start) / 1000);
+    err.write(`\r\x1b[K${c.cyan(frames[i++ % frames.length]!)} ${c.dim(`${label} ${s}s`)}`);
+  };
+  tick();
+  const timer = setInterval(tick, 100);
+  let stopped = false;
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    clearInterval(timer);
+    err.write("\r\x1b[K"); // clear the spinner line before real output lands
+  };
 }

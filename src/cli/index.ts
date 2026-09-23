@@ -14,7 +14,7 @@ import { appendMessage, latestSession, loadMessages, newSessionPath } from "../s
 import type { IO, Message, Usage } from "../types.js";
 import { completer, runCommand } from "./commands.js";
 import { onboard } from "./onboard.js";
-import { banner, costLine, printHelp, promptLabel } from "./ui.js";
+import { banner, costLine, printHelp, promptLabel, setTitle } from "./ui.js";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -24,6 +24,7 @@ const { values, positionals } = parseArgs({
     yolo: { type: "boolean" },
     readonly: { type: "boolean" },
     docker: { type: "boolean" },
+    btw: { type: "string" }, // internal: answer a /btw fork file, then exit
     help: { type: "boolean", short: "h" },
   },
 });
@@ -45,6 +46,20 @@ if (!resolveApiKey()) {
 }
 
 config.model = resolveModel(values.model); // --model > $HITCH_MODEL > config default > fallback
+
+// Child mode (spawned by /btw): load the forked conversation — its last message
+// is the side question — answer it once, read-only so a parallel run can't mutate
+// the shared working tree, then exit. The parent captures this stdout.
+if (values.btw) {
+  const io: IO = { out: (s) => process.stdout.write(s), ask: async () => "n" };
+  try {
+    await runTurn(loadMessages(values.btw), io, "readonly", () => {});
+  } catch (e: any) {
+    process.stdout.write(`\n[btw error] ${e?.message ?? e}\n`);
+  }
+  await flushExit(0);
+}
+
 const mode: PermMode = values.yolo ? "yolo" : values.readonly ? "readonly" : "ask";
 const cwd = process.cwd();
 
@@ -95,7 +110,7 @@ if (resumed) {
 }
 
 const totals: Usage = { prompt: 0, completion: 0, cost: 0 };
-const ctx = { totals, pauseInput: withRlPaused };
+const ctx = { totals, pauseInput: withRlPaused, messages };
 
 console.log(
   banner({
@@ -106,6 +121,7 @@ console.log(
     resumed: resumed !== undefined,
   }),
 );
+setTitle(cwd); // name the terminal tab after the session dir
 
 // Optional first prompt from the command line.
 const initial = positionals.join(" ").trim();
@@ -143,6 +159,8 @@ async function turn(text: string): Promise<void> {
   const user: Message = { role: "user", content: text };
   messages.push(user);
   appendMessage(sessionPath, user);
+  io.out("\n"); // gap between the input line and the reply
+  setTitle(cwd, "thinking");
   try {
     const u = await runTurn(messages, io, mode, (m) => appendMessage(sessionPath, m));
     totals.prompt += u.prompt;
@@ -150,8 +168,13 @@ async function turn(text: string): Promise<void> {
     totals.cost += u.cost;
     process.stdout.write(`\n${costLine(totals)}\n`);
   } catch (e: any) {
-    const msg = e.message ?? String(e);
-    console.error(`\n${c.red("error")} ${c.dim(msg)}`);
+    const meta = e?.error?.metadata; // OpenRouter puts the real reason here
+    const msg = e?.message ?? String(e);
+    const via = meta?.provider_name ? c.dim(` · via ${meta.provider_name}`) : "";
+    console.error(`\n${c.red("error")} ${c.dim(msg)}${via}`);
+    // The provider's own message (e.g. why a :free model 429'd + how to fix it).
+    const detail = meta?.raw ?? e?.error?.message;
+    if (detail && detail !== msg) console.error(c.dim(`  ${detail}`));
     if (/402|more credits|max_tokens/i.test(msg)) {
       console.error(
         c.dim(
@@ -159,6 +182,8 @@ async function turn(text: string): Promise<void> {
         ),
       );
     }
+  } finally {
+    setTitle(cwd); // back to idle
   }
 }
 

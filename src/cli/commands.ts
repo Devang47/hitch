@@ -1,3 +1,7 @@
+import { spawn } from "node:child_process";
+import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { search } from "@inquirer/prompts";
 import { c } from "../colors.js";
 import { fetchCatalog, pickModel, searchModels } from "../config/models.js";
@@ -9,7 +13,8 @@ import {
 } from "../config/settings.js";
 import { config } from "../core/llm.js";
 import { connectedServers, connectServer, disconnectServer, toolCount } from "../core/mcp.js";
-import type { Usage } from "../types.js";
+import { appendMessage } from "../session/session.js";
+import type { Message, Usage } from "../types.js";
 import { costLine, printHelp } from "./ui.js";
 
 /** State a command handler may touch. `pauseInput` yields the readline while an
@@ -17,6 +22,7 @@ import { costLine, printHelp } from "./ui.js";
 export type CommandCtx = {
   totals: Usage;
   pauseInput: <T>(fn: () => Promise<T>) => Promise<T>;
+  messages: Message[]; // the live conversation — /btw forks a snapshot of it
 };
 
 // Catalog for tab-completion and the `/` list. Add a command: one row here + a
@@ -28,6 +34,7 @@ const COMMANDS: [string, string][] = [
   ["/mcp", "list MCP servers and their tools"],
   ["/mcp add", "connect + save a server: /mcp add <name> <command> [args...]"],
   ["/mcp remove", "disconnect + forget a server: /mcp remove <name>"],
+  ["/btw", "answer a side question in a parallel process: /btw <question>"],
   ["/cost", "token + cost totals"],
   ["/help", "show help"],
   ["/exit", "quit"],
@@ -59,6 +66,10 @@ const handlers: Handler[] = [
     run: (l, ctx) => handleModel(l, ctx),
   },
   { match: (l) => l === "/mcp" || l.startsWith("/mcp "), run: (l) => handleMcp(l) },
+  {
+    match: (l) => l === "/btw" || l.startsWith("/btw "),
+    run: (l, ctx) => handleBtw(l.slice(4).trim(), ctx.messages),
+  },
   { match: (l) => l === "/exit" || l === "/quit", run: () => "exit" },
 ];
 
@@ -197,4 +208,44 @@ async function removeMcp(name?: string): Promise<void> {
     return;
   }
   console.log(`${c.green("removed")} ${c.bold(name)}${wasLive ? c.dim(" (disconnected)") : ""}`);
+}
+
+/** `/btw <question>`: fork the conversation to a temp file, append the question,
+ *  and spawn a parallel hitch process (`--btw`) to answer it read-only — the main
+ *  agent keeps going and the answer prints when the child finishes.
+ *  ponytail: fire-and-forget child; if the parent exits first the child dies on a
+ *  closed pipe. Track + kill children only if that ever proves to matter. */
+async function handleBtw(question: string, messages: Message[]): Promise<void> {
+  if (!question) {
+    console.log(c.dim("usage: /btw <question> — answers a side question in a parallel process"));
+    return;
+  }
+  const file = join(tmpdir(), `hitch-btw-${process.pid}-${Date.now()}.jsonl`);
+  for (const m of messages) appendMessage(file, m); // snapshot of the chat so far
+  appendMessage(file, { role: "user", content: question });
+
+  const child = spawn(
+    process.execPath,
+    [...process.execArgv, process.argv[1] as string, "--btw", file],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  let out = "";
+  child.stdout?.on("data", (d) => (out += d));
+  child.stderr?.on("data", (d) => (out += d));
+  child.on("error", (e) => console.log(`\n${c.red("btw failed:")} ${c.dim(e.message)}`));
+  child.on("close", () => {
+    rmSync(file, { force: true });
+    const body = (out.trim() || "(no answer)")
+      .split("\n")
+      .map((l) => `${c.magenta("┊")} ${l}`)
+      .join("\n");
+    console.log(`\n${c.magenta("┊ btw:")} ${c.dim(question)}\n${body}`);
+  });
+  console.log(
+    c.dim(
+      `↗ btw running in a parallel process (pid ${child.pid}) — keep working; answer appears when ready.`,
+    ),
+  );
 }

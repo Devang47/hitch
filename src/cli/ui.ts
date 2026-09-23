@@ -56,6 +56,16 @@ export function promptLabel(cwd: string): string {
   return `${c.magenta(basename(cwd) || "hitch")} ${c.cyan("❯")} `;
 }
 
+/** Set the terminal tab/window title (OSC 0). No-op when stdout is piped so we
+ *  never leak escape codes into captured output. `state` (e.g. "thinking")
+ *  prefixes the session dir when the agent is busy. */
+export function setTitle(cwd: string, state = ""): void {
+  if (!process.stdout.isTTY) return;
+  const dir = basename(cwd) || "hitch";
+  const title = state ? `hitch · ${state} · ${dir}` : `hitch · ${dir}`;
+  process.stdout.write(`\x1b]0;${title}\x07`);
+}
+
 /** One-line token/cost summary for a turn's running totals. */
 export function costLine(t: Usage): string {
   const tok = c.dim(`${t.prompt + t.completion} tok (${t.prompt}+${t.completion})`);
@@ -83,6 +93,7 @@ ${c.dim("in-session:")}
   /models --default   set the default model for all new sessions
   /models --refresh   refresh the model list from OpenRouter
   /mcp [add|remove]   list or manage MCP servers (connects live, no restart)
+  /btw <question>     answer a side question in a parallel process (read-only)
   /cost          token + cost totals
   /help          this help
   /exit          quit`);
