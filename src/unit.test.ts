@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { VERSION } from "./cli/ui.js";
+import { contextLine, VERSION } from "./cli/ui.js";
 import { loadedContextFiles, systemPrompt } from "./config/context.js";
 import { compact, estimateTokens, guardContext } from "./core/compaction.js";
 import { mcpToolName } from "./core/mcp.js";
@@ -142,6 +142,12 @@ test("registerTools/unregisterTools add and remove runtime tools (MCP raw jsonSc
 test("ui VERSION matches package.json", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
   assert.equal(VERSION, pkg.version);
+});
+
+test("contextLine shows used/limit + percent, empty when limit unknown", () => {
+  assert.equal(contextLine(5000, undefined), ""); // no catalog → no bar
+  assert.match(contextLine(12_000, 128_000), /12k\/128k ctx \(9%\)/);
+  assert.match(contextLine(120_000, 128_000), /94%/); // near-full still renders
 });
 
 // --- context compaction ---

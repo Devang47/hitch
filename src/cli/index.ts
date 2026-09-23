@@ -7,7 +7,7 @@ import { loadedContextFiles, systemPrompt } from "../config/context.js";
 import { cachedContextLimit } from "../config/models.js";
 import { resolveApiKey, resolveMcpServers, resolveModel } from "../config/settings.js";
 import { runTurn } from "../core/agent.js";
-import { guardContext } from "../core/compaction.js";
+import { estimateTokens, guardContext } from "../core/compaction.js";
 import { config } from "../core/llm.js";
 import { closeAll, connectAll, connectedServers } from "../core/mcp.js";
 import type { PermMode } from "../core/permissions.js";
@@ -16,7 +16,7 @@ import { appendMessage, latestSession, loadMessages, newSessionPath } from "../s
 import type { IO, Message, Usage } from "../types.js";
 import { completer, runCommand } from "./commands.js";
 import { onboard } from "./onboard.js";
-import { banner, costLine, printHelp, promptLabel, setTitle } from "./ui.js";
+import { banner, contextLine, costLine, printHelp, promptLabel, setTitle } from "./ui.js";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -199,7 +199,8 @@ async function turn(text: string): Promise<void> {
     totals.prompt += u.prompt;
     totals.completion += u.completion;
     totals.cost += u.cost;
-    process.stdout.write(`\n${costLine(totals)}\n`);
+    const ctxLine = contextLine(estimateTokens(messages), cachedContextLimit(config.model));
+    process.stdout.write(`\n${costLine(totals)}${ctxLine ? ` ${c.dim("·")} ${ctxLine}` : ""}\n`);
   } catch (e: any) {
     const meta = e?.error?.metadata; // OpenRouter puts the real reason here
     const msg = e?.message ?? String(e);

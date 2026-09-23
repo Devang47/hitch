@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { search } from "@inquirer/prompts";
 import { c } from "../colors.js";
-import { fetchCatalog, pickModel, searchModels } from "../config/models.js";
+import { cachedContextLimit, fetchCatalog, pickModel, searchModels } from "../config/models.js";
 import {
   removeMcpServer,
   resolveMcpServers,
@@ -16,7 +16,7 @@ import { client, config } from "../core/llm.js";
 import { connectedServers, connectServer, disconnectServer, toolCount } from "../core/mcp.js";
 import { appendMessage } from "../session/session.js";
 import type { Message, Usage } from "../types.js";
-import { costLine, printHelp } from "./ui.js";
+import { contextLine, costLine, printHelp } from "./ui.js";
 
 /** State a command handler may touch. `pauseInput` yields the readline while an
  *  @inquirer prompt takes over raw-mode stdin. */
@@ -60,7 +60,8 @@ const handlers: Handler[] = [
   {
     match: (l) => l === "/cost",
     run: (_l, ctx) => {
-      console.log(costLine(ctx.totals));
+      const ctxLine = contextLine(estimateTokens(ctx.messages), cachedContextLimit(config.model));
+      console.log(`${costLine(ctx.totals)}${ctxLine ? ` ${c.dim("·")} ${ctxLine}` : ""}`);
     },
   },
   {

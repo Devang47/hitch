@@ -2,7 +2,7 @@
 
 **A minimal, OpenRouter-native coding agent for your terminal.**
 
-hitch is a coding agent in ~500 lines: an LLM, four tools (read, write, edit,
+hitch is a small coding agent (~1700 lines): an LLM, four tools (read, write, edit,
 bash), and a loop. It's built in the spirit of [pi](https://github.com/earendil-works/pi) —
 tiny prompt, no ceremony — but it talks to a single endpoint ([OpenRouter](https://openrouter.ai)),
 so it drops the multi-provider machinery and adds the three things pi leaves out:

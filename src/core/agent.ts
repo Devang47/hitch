@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { c } from "../colors.js";
 import type { IO, Message, ToolCall, Usage } from "../types.js";
 import { client, config } from "./llm.js";
@@ -131,6 +133,8 @@ async function runTool(call: ToolCall, io: IO, mode: PermMode): Promise<string> 
   }
 
   io.out(`\n  ${c.cyan("⚙")} ${c.bold(tool.name)} ${c.dim(preview(args))}\n`);
+  const change = changePreview(tool.name, args);
+  if (change) io.out(`${change}\n`);
   const permission = await checkPermission(tool, args, mode, io.ask);
   if (!permission.ok) return `Tool call rejected: ${permission.reason}`;
 
@@ -163,6 +167,28 @@ function withCaching(messages: Message[], model: string): any[] {
 
 function preview(args: any): string {
   return String(args.command ?? args.path ?? "").slice(0, 80);
+}
+
+/** A colored preview of a pending file change, shown before the permission
+ *  prompt so the user sees exactly what a write/edit will do. edit_file already
+ *  carries the exact before/after strings (no diff algorithm needed); write_file
+ *  shows the new content and whether it overwrites an existing file. */
+function changePreview(name: string, args: any): string {
+  const CAP = 40; // don't flood the terminal on a huge change
+  const hunk = (text: string, sign: string, paint: (s: string) => string): string => {
+    const lines = String(text).split("\n");
+    const out = lines.slice(0, CAP).map((l) => paint(`  ${sign} ${l}`));
+    if (lines.length > CAP) out.push(c.dim(`  … (+${lines.length - CAP} more lines)`));
+    return out.join("\n");
+  };
+  if (name === "edit_file") {
+    return `${hunk(args.old_string ?? "", "-", c.red)}\n${hunk(args.new_string ?? "", "+", c.green)}`;
+  }
+  if (name === "write_file") {
+    const label = existsSync(resolve(String(args.path ?? ""))) ? "overwrite" : "new file";
+    return `${c.dim(`  ${label}`)}\n${hunk(args.content ?? "", "+", c.green)}`;
+  }
+  return "";
 }
 
 function truncate(text: string, max: number): string {

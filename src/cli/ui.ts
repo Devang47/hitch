@@ -72,6 +72,15 @@ export function costLine(t: Usage): string {
   return t.cost > 0 ? `${c.green(`$${t.cost.toFixed(4)}`)} ${c.dim("·")} ${tok}` : tok;
 }
 
+/** Current context estimate vs the model's window, e.g. "12k/128k ctx (9%)".
+ *  Empty when the limit is unknown (catalog not fetched); turns yellow near full. */
+export function contextLine(used: number, limit: number | undefined): string {
+  if (!limit) return "";
+  const pct = Math.round((used / limit) * 100);
+  const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+  return (pct >= 80 ? c.yellow : c.dim)(`${k(used)}/${k(limit)} ctx (${pct}%)`);
+}
+
 export function printHelp(): void {
   console.log(`${c.bold("hitch")} — a minimal OpenRouter coding agent
 
