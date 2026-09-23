@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import { c } from "../colors.js";
 import type { Usage } from "../types.js";
 
-export const VERSION = "0.3.0"; // kept in step with package.json (guarded by a unit test)
+export const VERSION = "0.3.1"; // kept in step with package.json (guarded by a unit test)
 
 const LOGO = [
   "██╗  ██╗██╗████████╗ ██████╗██╗  ██╗",

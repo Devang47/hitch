@@ -1,6 +1,6 @@
 {
   "name": "@devang47/hitch",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A minimal, OpenRouter-native coding agent. pi's spirit — four tools, tiny prompt — plus a permission gate, a live cost meter, and session resume.",
   "type": "module",
   "bin": {
@@ -35,10 +35,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Devang47/hitch.git"
+    "url": "git+https://github.com/devang47/hitch.git"
   },
-  "homepage": "https://github.com/Devang47/hitch#readme",
-  "bugs": "https://github.com/Devang47/hitch/issues",
+  "homepage": "https://github.com/devang47/hitch#readme",
+  "bugs": "https://github.com/devang47/hitch/issues",
   "dependencies": {
     "@inquirer/prompts": "^8.7.2",
     "@modelcontextprotocol/sdk": "^1.30.0",
