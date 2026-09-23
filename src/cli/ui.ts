@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import { c } from "../colors.js";
 import type { Usage } from "../types.js";
 
-export const VERSION = "0.2.0"; // kept in step with package.json (guarded by a unit test)
+export const VERSION = "0.3.0"; // kept in step with package.json (guarded by a unit test)
 
 const LOGO = [
   "██╗  ██╗██╗████████╗ ██████╗██╗  ██╗",
@@ -86,9 +86,10 @@ export type PromptInfo = {
   cost: number;
 };
 
-/** The REPL prompt: a status line (dir · model · mode · context% · cost) above
- *  the input arrow, like a rich shell prompt. Two lines so ANSI colors on the
- *  status can't throw off readline's cursor math on the input line. */
+/** The REPL prompt: an indented status line (dir · model · mode · context% ·
+ *  cost), a blank line, then the input arrow — giving the input room above and
+ *  below (the gap below comes from the turn's leading newline), like Claude's
+ *  input area. Indented two spaces so it isn't flush against the edge. */
 export function promptLabel({ cwd, model, mode, used, limit, cost }: PromptInfo): string {
   const segs = [
     c.green(shortModel(model)),
@@ -97,7 +98,7 @@ export function promptLabel({ cwd, model, mode, used, limit, cost }: PromptInfo)
     cost > 0 ? c.green(`$${cost.toFixed(4)}`) : "",
   ].filter(Boolean);
   const dir = c.magenta(basename(cwd) || "hitch");
-  return `${dir} ${c.dim("│")} ${segs.join(c.dim(" · "))}\n${c.cyan("❯")} `;
+  return `  ${dir} ${c.dim("│")} ${segs.join(c.dim(" · "))}\n\n  ${c.cyan("❯")} `;
 }
 
 /** Context fill as a compact percentage ("9% ctx"); empty when the limit is
