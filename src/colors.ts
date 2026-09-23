@@ -5,6 +5,9 @@ const style = (code: string) => (s: string) => (enabled ? `\x1b[${code}m${s}\x1b
 
 export const c = {
   dim: style("2"),
+  // ~60% opacity: white blended 60% over a dark bg = rgb(153,153,153). A fixed
+  // grey since terminals have no real opacity; tweak the RGB for a lighter/darker feel.
+  faint: style("38;2;153;153;153"),
   bold: style("1"),
   italic: style("3"),
   underline: style("4"),

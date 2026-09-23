@@ -169,8 +169,8 @@ async function runTool(call: ToolCall, io: IO, mode: PermMode): Promise<string> 
 function toolOutput(result: string): string {
   const CAP = 20;
   const lines = result.split("\n");
-  const shown = lines.slice(0, CAP).map((l) => `  ${c.dim("│")} ${c.dim(l)}`);
-  if (lines.length > CAP) shown.push(`  ${c.dim(`│ … +${lines.length - CAP} more lines`)}`);
+  const shown = lines.slice(0, CAP).map((l) => `  ${c.faint("│")} ${c.faint(l)}`);
+  if (lines.length > CAP) shown.push(`  ${c.faint(`│ … +${lines.length - CAP} more lines`)}`);
   return `${shown.join("\n")}\n`;
 }
 
