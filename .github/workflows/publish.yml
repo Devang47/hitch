@@ -1,0 +1,39 @@
+name: Publish
+
+# Auto-publish to npm on every push to main. Guarded: it only publishes when
+# package.json's version isn't already on npm, so a push without a version bump
+# is a no-op instead of a failed "cannot publish over existing version". Bump
+# the version in package.json and push to main to release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          registry-url: "https://registry.npmjs.org"
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - name: Publish if the version is new
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already on npm — nothing to publish."
+          else
+            echo "Publishing $name@$version…"
+            npm publish --provenance --access public
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
