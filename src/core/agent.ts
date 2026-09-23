@@ -23,6 +23,7 @@ export async function runTurn(
   const usage: Usage = { prompt: 0, completion: 0, cost: 0 };
   const specs = toolSpecs();
 
+  let first = true;
   for (;;) {
     if (signal?.aborted) return usage; // interrupted between loop iterations
     // Fallback chain: [primary, ...fallbacks] as OpenRouter's `models` param.
@@ -32,6 +33,10 @@ export async function runTurn(
     let content = "";
     const toolCalls: ToolCall[] = [];
 
+    // A blank line before each "thinking" so it isn't cramped against the prompt
+    // or a previous tool's output (the first turn's gap comes from the caller).
+    if (!first) io.out("\n");
+    first = false;
     // Spinner covers the wait for the first token (and any connect/HTTP error);
     // cleared the instant output starts so it never interleaves with the reply.
     const stopSpinner = startSpinner("thinking");
@@ -83,7 +88,7 @@ export async function runTurn(
       // Ctrl-C / abort: close the turn with whatever text streamed (no tool calls,
       // so the message list stays valid) and hand control back to the REPL.
       if (signal?.aborted || e?.name === "APIUserAbortError" || e?.name === "AbortError") {
-        if (content) io.out(`\n${renderMarkdown(content)}\n`);
+        if (content) io.out(`${renderMarkdown(content)}\n`);
         io.out(`${c.yellow("⨯ interrupted")}\n`);
         const partial: Message = { role: "assistant", content: content || "[interrupted]" };
         messages.push(partial);
@@ -94,7 +99,9 @@ export async function runTurn(
     } finally {
       stopSpinner(); // idempotent: also clears on error / empty stream
     }
-    if (content) io.out(`\n${renderMarkdown(content)}\n`);
+    // No leading blank: the reply lands on the cleared spinner line, so the only
+    // gap is the one placed before "thinking" above (avoids a double blank).
+    if (content) io.out(`${renderMarkdown(content)}\n`);
 
     // Densify holes (a provider streaming non-contiguous indices leaves gaps that
     // `for..of` would yield as undefined) and backfill an id for any call whose
@@ -229,7 +236,7 @@ function startSpinner(label: string): () => void {
   let i = 0;
   const tick = () => {
     const s = Math.floor((Date.now() - start) / 1000);
-    err.write(`\r\x1b[K${c.cyan(frames[i++ % frames.length]!)} ${c.dim(`${label} ${s}s`)}`);
+    err.write(`\r\x1b[K  ${c.cyan(frames[i++ % frames.length]!)} ${c.bold(label)}${c.dim(` ${s}s`)}`);
   };
   tick();
   const timer = setInterval(tick, 100);

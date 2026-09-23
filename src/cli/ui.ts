@@ -5,12 +5,25 @@ import type { Usage } from "../types.js";
 export const VERSION = "0.2.0"; // kept in step with package.json (guarded by a unit test)
 
 const LOGO = [
-  " _     _ _       _     ",
-  "| |__ (_) |_ ___| |__  ",
-  "| '_ \\| | __/ __| '_ \\ ",
-  "| | | | | || (__| | | |",
-  "|_| |_|_|\\__\\___|_| |_|",
+  "██╗  ██╗██╗████████╗ ██████╗██╗  ██╗",
+  "██║  ██║██║╚══██╔══╝██╔════╝██║  ██║",
+  "███████║██║   ██║   ██║     ███████║",
+  "██╔══██║██║   ██║   ██║     ██╔══██║",
+  "██║  ██║██║   ██║   ╚██████╗██║  ██║",
+  "╚═╝  ╚═╝╚═╝   ╚═╝    ╚═════╝╚═╝  ╚═╝",
 ];
+
+const ESC = String.fromCharCode(27);
+/** Visible width: length with ANSI color codes stripped. */
+const visWidth = (s: string): number => s.replace(new RegExp(`${ESC}\\[[0-9;]*m`, "g"), "").length;
+
+/** Center each line by the widest in the group, so a key/value block keeps its
+ *  internal alignment while sitting centered on screen. */
+function centerBlock(lines: string[], cols: number): string[] {
+  const width = Math.max(0, ...lines.map(visWidth));
+  const pad = " ".repeat(Math.max(0, Math.floor((cols - width) / 2)));
+  return lines.map((l) => (l === "" ? "" : pad + l));
+}
 
 export type BannerInfo = {
   model: string;
@@ -30,6 +43,7 @@ export function banner({ model, cwd, mode, context, resumed }: BannerInfo): stri
       `context: ${ctx} · /help for commands`,
     ].join("\n");
   }
+  const cols = process.stdout.columns || 80;
   const ctx = context.length ? context.map((p) => basename(p)).join(", ") : c.dim("none");
   const rows: [string, string][] = [
     ["model", `${c.green(model)}${resumed ? c.yellow("  · resumed") : ""}`],
@@ -40,13 +54,20 @@ export function banner({ model, cwd, mode, context, resumed }: BannerInfo): stri
   const w = Math.max(...rows.map(([k]) => k.length));
   return [
     "",
-    ...LOGO.map((l) => c.cyan(l)),
+    ...centerBlock(
+      LOGO.map((l) => c.bold(c.cyan(l))),
+      cols,
+    ),
     "",
-    `  ${c.dim(`a minimal OpenRouter coding agent · v${VERSION}`)}`,
+    ...centerBlock([c.dim(`a minimal OpenRouter coding agent · v${VERSION}`)], cols),
     "",
-    ...rows.map(([k, v]) => `  ${c.dim(k.padEnd(w))}   ${v}`),
+    ...centerBlock(
+      rows.map(([k, v]) => `${c.dim(k.padEnd(w))}   ${v}`),
+      cols,
+    ),
     "",
-    `  ${c.dim("/help for commands · / to browse")}`,
+    ...centerBlock([c.dim("/help for commands · / to browse")], cols),
+    "",
   ].join("\n");
 }
 
