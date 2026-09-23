@@ -11,6 +11,7 @@ import { mcpToolName } from "./core/mcp.js";
 import { checkPermission } from "./core/permissions.js";
 import { dockerCommand, wrapCommand } from "./core/sandbox.js";
 import { registerTools, toolMap, toolSpecs, unregisterTools } from "./core/tools.js";
+import { renderMarkdown } from "./markdown.js";
 import { appendMessage, loadMessages } from "./session/session.js";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "hitch-"));
@@ -211,6 +212,23 @@ test("changePreview labels write_file overwrite vs new, and missing path isn't '
   writeFileSync(f, "x");
   assert.match(changePreview("write_file", { path: f, content: "y" }), /overwrite/);
   assert.match(changePreview("write_file", { content: "y" }), /new file/); // no path
+});
+
+// --- markdown rendering ---
+
+test("renderMarkdown draws a box-table with aligned columns", () => {
+  const out = renderMarkdown("| A | B |\n|---|---|\n| 1 | 22 |");
+  assert.match(out, /┌.*┐/); // top border
+  assert.match(out, /│ A/);
+  assert.match(out, /│ 1/);
+});
+
+test("renderMarkdown strips inline markers and preserves digits inside code", () => {
+  const out = renderMarkdown("**bold** and `code 1700` and *it* and [x](https://y)");
+  assert.doesNotMatch(out, /\*\*/); // bold markup consumed
+  assert.match(out, /bold/);
+  assert.match(out, /code 1700/); // digits inside code intact (no sentinel clobber)
+  assert.match(out, /https:\/\/y/); // link url shown
 });
 
 // --- context compaction ---

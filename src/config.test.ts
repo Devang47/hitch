@@ -43,7 +43,13 @@ test("setDefaultModel persists to config.json", () => {
 
 test("searchModels filters by id and name; empty query returns all", () => {
   const models = [
-    { id: "deepseek/deepseek-chat", name: "DeepSeek", contextLength: 0, promptPrice: 0, tools: true },
+    {
+      id: "deepseek/deepseek-chat",
+      name: "DeepSeek",
+      contextLength: 0,
+      promptPrice: 0,
+      tools: true,
+    },
     { id: "openai/gpt", name: "GPT-5", contextLength: 0, promptPrice: 0, tools: true },
   ];
   assert.equal(searchModels(models, "deepseek").length, 1);

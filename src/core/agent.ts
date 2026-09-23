@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { c } from "../colors.js";
+import { renderMarkdown } from "../markdown.js";
 import type { IO, Message, ToolCall, Usage } from "../types.js";
 import { client, config } from "./llm.js";
 import { checkPermission, type PermMode } from "./permissions.js";
@@ -29,7 +30,6 @@ export async function runTurn(
     const models = config.fallbacks.length ? [config.model, ...config.fallbacks] : undefined;
 
     let content = "";
-    let printedText = false;
     const toolCalls: ToolCall[] = [];
 
     // Spinner covers the wait for the first token (and any connect/HTTP error);
@@ -55,13 +55,11 @@ export async function runTurn(
       )) as unknown as AsyncIterable<any>;
 
       for await (const chunk of stream) {
-        stopSpinner(); // first chunk arrived → drop the spinner before printing
         const delta = chunk.choices[0]?.delta;
-        if (delta?.content) {
-          io.out(delta.content);
-          content += delta.content;
-          printedText = true;
-        }
+        // Buffer text (don't stream raw) so we can render it as markdown once the
+        // message is whole — a table/heading/bold span can't be rendered mid-token.
+        // The spinner keeps turning until the message lands (stopped in `finally`).
+        if (delta?.content) content += delta.content;
         // Tool-call fragments arrive split across chunks; merge them by index.
         for (const tc of delta?.tool_calls ?? []) {
           toolCalls[tc.index] ??= {
@@ -85,7 +83,7 @@ export async function runTurn(
       // Ctrl-C / abort: close the turn with whatever text streamed (no tool calls,
       // so the message list stays valid) and hand control back to the REPL.
       if (signal?.aborted || e?.name === "APIUserAbortError" || e?.name === "AbortError") {
-        if (printedText) io.out("\n");
+        if (content) io.out(`\n${renderMarkdown(content)}\n`);
         io.out(`${c.yellow("⨯ interrupted")}\n`);
         const partial: Message = { role: "assistant", content: content || "[interrupted]" };
         messages.push(partial);
@@ -96,7 +94,7 @@ export async function runTurn(
     } finally {
       stopSpinner(); // idempotent: also clears on error / empty stream
     }
-    if (printedText) io.out("\n");
+    if (content) io.out(`\n${renderMarkdown(content)}\n`);
 
     // Densify holes (a provider streaming non-contiguous indices leaves gaps that
     // `for..of` would yield as undefined) and backfill an id for any call whose
@@ -141,7 +139,9 @@ async function runTool(call: ToolCall, io: IO, mode: PermMode): Promise<string> 
     return `Error: could not parse arguments for ${tool.name}`;
   }
 
-  io.out(`\n  ${c.cyan("⚙")} ${c.bold(tool.name)} ${c.dim(preview(args))}\n`);
+  // Action line: a colored tool "chip" + the command/path in bold, so a tool
+  // call reads distinctly from the agent's prose above and its output below.
+  io.out(`\n  ${c.cyan("⚙")} ${c.bold(c.cyan(tool.name))} ${c.bold(preview(args))}\n`);
   // Readonly rejects every write/edit, so don't bother rendering its diff.
   if (mode !== "readonly") {
     const change = changePreview(tool.name, args);
@@ -154,13 +154,24 @@ async function runTool(call: ToolCall, io: IO, mode: PermMode): Promise<string> 
     // Built-ins validate/normalize with zod; MCP tools carry no zod schema, so
     // pass their args straight through (the server validates its own input).
     const result = await tool.run(tool.parameters ? tool.parameters.parse(args) : args);
-    io.out(`  ${c.dim(`↳ ${truncate(result, 400)}`)}\n`);
+    io.out(toolOutput(result)); // dim gutter marks this as terminal output, not prose
     return result;
   } catch (e: any) {
     const message = `Error: ${e.message}`;
-    io.out(`  ${c.dim("↳")} ${c.red(message)}\n`);
+    io.out(`  ${c.red("│")} ${c.red(message)}\n`);
     return message;
   }
+}
+
+/** Command/tool output shown under the action line: a dim left gutter on every
+ *  line so it reads as terminal output distinct from the agent's prose, capped
+ *  to a screenful (the full result still goes back to the model). */
+function toolOutput(result: string): string {
+  const CAP = 20;
+  const lines = result.split("\n");
+  const shown = lines.slice(0, CAP).map((l) => `  ${c.dim("│")} ${c.dim(l)}`);
+  if (lines.length > CAP) shown.push(`  ${c.dim(`│ … +${lines.length - CAP} more lines`)}`);
+  return `${shown.join("\n")}\n`;
 }
 
 /** Add a prompt-caching breakpoint to the (large, stable) system prompt so
@@ -202,10 +213,6 @@ export function changePreview(name: string, args: any): string {
     return `${c.dim(`  ${label}`)}\n${hunk(args.content ?? "", "+", c.green)}`;
   }
   return "";
-}
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max)}… (+${text.length - max} chars)` : text;
 }
 
 /** Braille spinner with elapsed seconds, shown while waiting on the model.

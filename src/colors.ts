@@ -6,6 +6,9 @@ const style = (code: string) => (s: string) => (enabled ? `\x1b[${code}m${s}\x1b
 export const c = {
   dim: style("2"),
   bold: style("1"),
+  italic: style("3"),
+  underline: style("4"),
+  strike: style("9"),
   red: style("31"),
   green: style("32"),
   yellow: style("33"),
