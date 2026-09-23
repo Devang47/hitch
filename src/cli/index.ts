@@ -16,7 +16,7 @@ import { appendMessage, latestSession, loadMessages, newSessionPath } from "../s
 import type { IO, Message, Usage } from "../types.js";
 import { completer, runCommand } from "./commands.js";
 import { onboard } from "./onboard.js";
-import { banner, printHelp, promptLabel, setTitle, statusLine } from "./ui.js";
+import { banner, printHelp, promptLabel, promptRule, setTitle, statusLine } from "./ui.js";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -193,7 +193,7 @@ async function turn(text: string): Promise<void> {
       );
   }
 
-  io.out("\n"); // gap between the input line and the reply
+  io.out(`${promptRule()}\n\n`); // rule after the input, then a gap before the reply
   setTitle(cwd, "thinking");
   activeTurn = new AbortController();
   try {
@@ -208,7 +208,7 @@ async function turn(text: string): Promise<void> {
     totals.completion += u.completion;
     totals.cost += u.cost;
     // Reuse `limit` from the context guard above — no second catalog disk read.
-    process.stdout.write(`\n${statusLine(totals, estimateTokens(messages), limit)}\n`);
+    process.stdout.write(`\n  ${statusLine(totals, estimateTokens(messages), limit)}\n`);
   } catch (e: any) {
     const meta = e?.error?.metadata; // OpenRouter puts the real reason here
     const msg = e?.message ?? String(e);

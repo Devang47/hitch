@@ -86,10 +86,15 @@ export type PromptInfo = {
   cost: number;
 };
 
+/** The dim rule that fences the input; reused for the line after the input. */
+export function promptRule(): string {
+  return `  ${c.dim("─".repeat(Math.min((process.stdout.columns || 80) - 2, 72)))}`;
+}
+
 /** The REPL prompt: an indented status line (dir · model · mode · context% ·
- *  cost), a blank line, then the input arrow — giving the input room above and
- *  below (the gap below comes from the turn's leading newline), like Claude's
- *  input area. Indented two spaces so it isn't flush against the edge. */
+ *  cost), a dim rule to fence the input, then the arrow — like Claude's input
+ *  area. The matching rule + gap below the input are printed by the turn once
+ *  submitted. Indented two spaces so it isn't flush against the edge. */
 export function promptLabel({ cwd, model, mode, used, limit, cost }: PromptInfo): string {
   const segs = [
     c.green(shortModel(model)),
@@ -98,7 +103,7 @@ export function promptLabel({ cwd, model, mode, used, limit, cost }: PromptInfo)
     cost > 0 ? c.green(`$${cost.toFixed(4)}`) : "",
   ].filter(Boolean);
   const dir = c.magenta(basename(cwd) || "hitch");
-  return `  ${dir} ${c.dim("│")} ${segs.join(c.dim(" · "))}\n\n  ${c.cyan("❯")} `;
+  return `  ${dir} ${c.dim("│")} ${segs.join(c.dim(" · "))}\n${promptRule()}\n  ${c.cyan("❯")} `;
 }
 
 /** Context fill as a compact percentage ("9% ctx"); empty when the limit is

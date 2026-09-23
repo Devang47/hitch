@@ -88,8 +88,8 @@ export async function runTurn(
       // Ctrl-C / abort: close the turn with whatever text streamed (no tool calls,
       // so the message list stays valid) and hand control back to the REPL.
       if (signal?.aborted || e?.name === "APIUserAbortError" || e?.name === "AbortError") {
-        if (content) io.out(`${renderMarkdown(content)}\n`);
-        io.out(`${c.yellow("⨯ interrupted")}\n`);
+        if (content) io.out(`${indent(renderMarkdown(content))}\n`);
+        io.out(`  ${c.yellow("⨯ interrupted")}\n`);
         const partial: Message = { role: "assistant", content: content || "[interrupted]" };
         messages.push(partial);
         onMessage(partial);
@@ -101,7 +101,8 @@ export async function runTurn(
     }
     // No leading blank: the reply lands on the cleared spinner line, so the only
     // gap is the one placed before "thinking" above (avoids a double blank).
-    if (content) io.out(`${renderMarkdown(content)}\n`);
+    // Indented so the reply lines up with the rest of the turn's output.
+    if (content) io.out(`${indent(renderMarkdown(content))}\n`);
 
     // Densify holes (a provider streaming non-contiguous indices leaves gaps that
     // `for..of` would yield as undefined) and backfill an id for any call whose
@@ -128,7 +129,7 @@ export async function runTurn(
       onMessage(toolMessage);
     }
     if (signal?.aborted) {
-      io.out(`${c.yellow("⨯ interrupted")}\n`);
+      io.out(`  ${c.yellow("⨯ interrupted")}\n`);
       return usage;
     }
     // loop: the model now sees the tool results
@@ -146,9 +147,9 @@ async function runTool(call: ToolCall, io: IO, mode: PermMode): Promise<string> 
     return `Error: could not parse arguments for ${tool.name}`;
   }
 
-  // Action line: a colored tool "chip" + the command/path in bold, so a tool
-  // call reads distinctly from the agent's prose above and its output below.
-  io.out(`\n  ${c.cyan("⚙")} ${c.bold(c.cyan(tool.name))} ${c.bold(preview(args))}\n`);
+  // Action line, Claude-style: a green ● dot + the tool name, with the target in
+  // dim parens, so a tool call reads distinctly from prose above and output below.
+  io.out(`\n  ${c.green("⏺")} ${c.bold(tool.name)}${c.dim(`(${preview(args)})`)}\n`);
   // Readonly rejects every write/edit, so don't bother rendering its diff.
   if (mode !== "readonly") {
     const change = changePreview(tool.name, args);
@@ -165,19 +166,30 @@ async function runTool(call: ToolCall, io: IO, mode: PermMode): Promise<string> 
     return result;
   } catch (e: any) {
     const message = `Error: ${e.message}`;
-    io.out(`  ${c.red("│")} ${c.red(message)}\n`);
+    io.out(`  ${c.red("⎿")} ${c.red(message)}\n`);
     return message;
   }
 }
 
-/** Command/tool output shown under the action line: a dim left gutter on every
- *  line so it reads as terminal output distinct from the agent's prose, capped
- *  to a few lines by default (the full result still goes back to the model). */
+/** Indent every non-empty line two spaces, so a block lines up with the rest of
+ *  the turn's output (uniform left padding). */
+function indent(text: string): string {
+  return text
+    .split("\n")
+    .map((l) => (l ? `  ${l}` : l))
+    .join("\n");
+}
+
+/** Command/tool output under the action line, Claude-style: a dim ⎿ elbow on the
+ *  first line and aligned faint text below, capped to a few lines by default (the
+ *  full result still goes back to the model). */
 function toolOutput(result: string): string {
   const CAP = 5; // show a short preview by default; the full result still goes to the model
   const lines = result.split("\n");
-  const shown = lines.slice(0, CAP).map((l) => `  ${c.faint("│")} ${c.faint(l)}`);
-  if (lines.length > CAP) shown.push(`  ${c.faint(`│ … +${lines.length - CAP} more lines`)}`);
+  const shown = lines
+    .slice(0, CAP)
+    .map((l, i) => `  ${c.faint(i === 0 ? "⎿" : " ")} ${c.faint(l)}`);
+  if (lines.length > CAP) shown.push(`    ${c.faint(`… +${lines.length - CAP} more lines`)}`);
   return `${shown.join("\n")}\n`;
 }
 
