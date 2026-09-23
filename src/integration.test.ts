@@ -93,7 +93,7 @@ test("caching adds a system-prompt cache_control breakpoint only for anthropic/g
   const savedModel = config.model;
   try {
     fake.setResponses([{ deltas: [{ content: "ok" }] }]);
-    config.model = "anthropic/claude-x";
+    config.model = "google/gemini-x"; // exercises the same anthropic|google caching branch
     const system = { role: "system", content: "you are hitch" };
     await runTurn([system, { role: "user", content: "hi" }] as any, noop, "yolo", () => {});
     const sent = fake.requests[0].messages[0];
