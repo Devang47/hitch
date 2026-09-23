@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -59,6 +59,18 @@ test("write_file creates parent directories", async () => {
   const f = join(tmp(), "deep/nested/x.txt");
   await write.run({ path: f, content: "hi" });
   assert.equal(readFileSync(f, "utf8"), "hi");
+});
+
+test("write_file is atomic: content lands and no temp file is left behind", async () => {
+  const dir = tmp();
+  const f = join(dir, "atomic.txt");
+  await write.run({ path: f, content: "data" });
+  assert.equal(readFileSync(f, "utf8"), "data");
+  assert.equal(
+    readdirSync(dir).some((n) => n.endsWith(".tmp")),
+    false,
+    "temp file was renamed, not left behind",
+  );
 });
 
 // --- tools: edit_file ---

@@ -1,11 +1,28 @@
 import { exec } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { wrapCommand } from "./sandbox.js";
 
 const execAsync = promisify(exec);
+
+/** Write via a temp file in the same dir + atomic rename, so another agent
+ *  writing the same path concurrently can never see or leave a half-written,
+ *  corrupt file — the destination is always the old or the new whole content.
+ *  pid in the temp name keeps two writers' temps from colliding.
+ *  ponytail: last rename wins, so a truly concurrent edit can still lose an
+ *  update (not corrupt it); add file locking only if that races in practice. */
+function atomicWrite(dest: string, data: string): void {
+  const tmp = `${dest}.${process.pid}.tmp`;
+  writeFileSync(tmp, data);
+  try {
+    renameSync(tmp, dest);
+  } catch (e) {
+    rmSync(tmp, { force: true }); // don't leave the temp behind on a failed rename
+    throw e;
+  }
+}
 
 /** Keep the OpenRouter key out of tool results (it lives in .env / config.json,
  *  which the model may read or `cat`) so it never enters the transcript or logs.
@@ -58,7 +75,7 @@ const write: Tool = {
   run: async ({ path, content }) => {
     const p = resolve(path);
     mkdirSync(dirname(p), { recursive: true });
-    writeFileSync(p, content);
+    atomicWrite(p, content);
     return `Wrote ${content.length} bytes to ${path}`;
   },
 };
@@ -86,7 +103,7 @@ const edit: Tool = {
     const next = replace_all
       ? text.split(old_string).join(new_string)
       : text.replace(old_string, () => new_string);
-    writeFileSync(p, next);
+    atomicWrite(p, next);
     return `Edited ${path} (${replace_all ? count : 1} replacement${replace_all && count > 1 ? "s" : ""})`;
   },
 };
