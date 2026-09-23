@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { VERSION } from "./cli/ui.js";
 import { loadedContextFiles, systemPrompt } from "./config/context.js";
 import { compact, estimateTokens, guardContext } from "./core/compaction.js";
 import { mcpToolName } from "./core/mcp.js";
@@ -134,6 +135,13 @@ test("registerTools/unregisterTools add and remove runtime tools (MCP raw jsonSc
   unregisterTools(["mcp__x__do"]);
   assert.equal(toolSpecs().length, before, "count restored after unregister");
   assert.equal(toolMap.has("mcp__x__do"), false);
+});
+
+// --- version ---
+
+test("ui VERSION matches package.json", () => {
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  assert.equal(VERSION, pkg.version);
 });
 
 // --- context compaction ---
