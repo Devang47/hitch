@@ -236,7 +236,9 @@ function startSpinner(label: string): () => void {
   let i = 0;
   const tick = () => {
     const s = Math.floor((Date.now() - start) / 1000);
-    err.write(`\r\x1b[K  ${c.cyan(frames[i++ % frames.length]!)} ${c.bold(label)}${c.dim(` ${s}s`)}`);
+    err.write(
+      `\r\x1b[K  ${c.cyan(frames[i++ % frames.length]!)} ${c.bold(label)}${c.dim(` ${s}s`)}`,
+    );
   };
   tick();
   const timer = setInterval(tick, 100);
