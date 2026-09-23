@@ -228,6 +228,10 @@ async function withRlPaused<T>(fn: () => Promise<T>): Promise<T> {
     return await fn();
   } finally {
     rl.resume();
+    // @inquirer restores stdin to cooked mode on exit, but readline's terminal
+    // mode needs raw mode — otherwise the terminal echoes typed input a second
+    // time (a stray duplicate line after every picker use).
+    if (process.stdin.isTTY) process.stdin.setRawMode(true);
   }
 }
 
