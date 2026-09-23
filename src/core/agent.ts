@@ -172,9 +172,9 @@ async function runTool(call: ToolCall, io: IO, mode: PermMode): Promise<string> 
 
 /** Command/tool output shown under the action line: a dim left gutter on every
  *  line so it reads as terminal output distinct from the agent's prose, capped
- *  to a screenful (the full result still goes back to the model). */
+ *  to a few lines by default (the full result still goes back to the model). */
 function toolOutput(result: string): string {
-  const CAP = 20;
+  const CAP = 5; // show a short preview by default; the full result still goes to the model
   const lines = result.split("\n");
   const shown = lines.slice(0, CAP).map((l) => `  ${c.faint("│")} ${c.faint(l)}`);
   if (lines.length > CAP) shown.push(`  ${c.faint(`│ … +${lines.length - CAP} more lines`)}`);
