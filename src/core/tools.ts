@@ -7,6 +7,13 @@ import { wrapCommand } from "./sandbox.js";
 
 const execAsync = promisify(exec);
 
+/** Keep the OpenRouter key out of tool results (it lives in .env / config.json,
+ *  which the model may read or `cat`) so it never enters the transcript or logs.
+ *  Matched by its `sk-or-` prefix, so no path/filename allowlist to maintain. */
+function redactSecrets(text: string): string {
+  return text.replace(/sk-or-[A-Za-z0-9._-]+/g, "sk-or-***redacted***");
+}
+
 /** `safe` tools run without asking; `write`/`exec` go through the permission gate. */
 export type Risk = "safe" | "write" | "exec";
 
@@ -29,10 +36,12 @@ const read: Tool = {
     limit: z.number().int().min(1).optional().describe("Maximum number of lines to return"),
   }),
   run: async ({ path, offset = 1, limit }) => {
-    const text = readFileSync(resolve(path), "utf8");
+    const text = redactSecrets(readFileSync(resolve(path), "utf8"));
     if (text === "") return "(empty file)";
     const lines = text.split("\n");
     const start = offset - 1;
+    if (start >= lines.length)
+      return `(offset ${offset} is past end of file — ${lines.length} line(s))`;
     const slice = limit ? lines.slice(start, start + limit) : lines.slice(start);
     return slice.map((l, i) => `${start + i + 1}\t${l}`).join("\n") || "(empty file)";
   },
@@ -72,9 +81,11 @@ const edit: Tool = {
     if (count === 0) throw new Error(`old_string not found in ${path}`);
     if (count > 1 && !replace_all)
       throw new Error(`old_string appears ${count} times; add context or pass replace_all`);
+    // `() => new_string` (a function replacer) so `$&`, `$$`, `$1` etc. in the
+    // replacement are inserted literally, not treated as regex substitutions.
     const next = replace_all
       ? text.split(old_string).join(new_string)
-      : text.replace(old_string, new_string);
+      : text.replace(old_string, () => new_string);
     writeFileSync(p, next);
     return `Edited ${path} (${replace_all ? count : 1} replacement${replace_all && count > 1 ? "s" : ""})`;
   },
@@ -100,11 +111,15 @@ const bash: Tool = {
         timeout: timeout_ms,
         maxBuffer: 10 * 1024 * 1024,
       });
-      return `${stdout}${stderr ? `\n[stderr]\n${stderr}` : ""}`.trim() || "(no output)";
+      return (
+        redactSecrets(`${stdout}${stderr ? `\n[stderr]\n${stderr}` : ""}`.trim()) || "(no output)"
+      );
     } catch (e: any) {
       // Non-zero exit or timeout: hand the output back so the model can react.
       const out = `${e.stdout ?? ""}${e.stderr ? `\n[stderr]\n${e.stderr}` : ""}`.trim();
-      return `Command failed (exit ${e.code ?? "?"}${e.killed ? ", timed out" : ""}):\n${out || e.message}`;
+      return redactSecrets(
+        `Command failed (exit ${e.code ?? "?"}${e.killed ? ", timed out" : ""}):\n${out || e.message}`,
+      );
     }
   },
 };

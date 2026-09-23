@@ -40,7 +40,31 @@ export function guardContext(messages: Message[], limit: number): number {
   const kept = [...system, ...rounds.flat()];
   messages.length = 0;
   messages.push(...kept);
+  // A single surviving round (one turn with huge tool output) can still exceed
+  // the window — dropping whole rounds can't help. Clip the biggest message
+  // bodies so the request stays valid instead of 400-ing on overflow.
+  clipToFit(messages, limit);
   return before - messages.length;
+}
+
+/** Last-resort shrink: repeatedly halve the largest message body until the
+ *  estimate fits. Only touches `content`, never tool_calls, so pairings stay
+ *  valid. Stops when nothing worth clipping remains. */
+function clipToFit(messages: Message[], limit: number): void {
+  while (estimateTokens(messages) > limit) {
+    let idx = -1;
+    let max = 0;
+    for (let i = 0; i < messages.length; i++) {
+      const len = messages[i]!.content?.length ?? 0;
+      if (len > max) {
+        max = len;
+        idx = i;
+      }
+    }
+    if (idx < 0 || max < 400) return; // nothing large enough left to trim
+    const m = messages[idx]!;
+    m.content = `${m.content!.slice(0, Math.floor(max / 2))}\n…[truncated to fit context]`;
+  }
 }
 
 /** Replace all but the last `keepRecent` rounds with one summary message (via the

@@ -16,7 +16,7 @@ import { appendMessage, latestSession, loadMessages, newSessionPath } from "../s
 import type { IO, Message, Usage } from "../types.js";
 import { completer, runCommand } from "./commands.js";
 import { onboard } from "./onboard.js";
-import { banner, contextLine, costLine, printHelp, promptLabel, setTitle } from "./ui.js";
+import { banner, printHelp, promptLabel, setTitle, statusLine } from "./ui.js";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -199,8 +199,8 @@ async function turn(text: string): Promise<void> {
     totals.prompt += u.prompt;
     totals.completion += u.completion;
     totals.cost += u.cost;
-    const ctxLine = contextLine(estimateTokens(messages), cachedContextLimit(config.model));
-    process.stdout.write(`\n${costLine(totals)}${ctxLine ? ` ${c.dim("·")} ${ctxLine}` : ""}\n`);
+    // Reuse `limit` from the context guard above — no second catalog disk read.
+    process.stdout.write(`\n${statusLine(totals, estimateTokens(messages), limit)}\n`);
   } catch (e: any) {
     const meta = e?.error?.metadata; // OpenRouter puts the real reason here
     const msg = e?.message ?? String(e);

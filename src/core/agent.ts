@@ -98,14 +98,23 @@ export async function runTurn(
     }
     if (printedText) io.out("\n");
 
+    // Densify holes (a provider streaming non-contiguous indices leaves gaps that
+    // `for..of` would yield as undefined) and backfill an id for any call whose
+    // fragments never carried one — otherwise the assistant/tool pairing sent on
+    // the next request is invalid.
+    const calls = toolCalls.filter(Boolean);
+    calls.forEach((call, i) => {
+      if (!call.id) call.id = `call_${i}`;
+    });
+
     const assistant: Message = { role: "assistant", content: content || null };
-    if (toolCalls.length) assistant.tool_calls = toolCalls;
+    if (calls.length) assistant.tool_calls = calls;
     messages.push(assistant);
     onMessage(assistant);
 
-    if (toolCalls.length === 0) return usage; // model is done for this turn
+    if (calls.length === 0) return usage; // model is done for this turn
 
-    for (const call of toolCalls) {
+    for (const call of calls) {
       // Once interrupted, stop running tools but still answer each pending call
       // with a stub so every tool_call keeps its matching tool result.
       const result = signal?.aborted ? "[interrupted]" : await runTool(call, io, mode);
@@ -133,8 +142,11 @@ async function runTool(call: ToolCall, io: IO, mode: PermMode): Promise<string> 
   }
 
   io.out(`\n  ${c.cyan("⚙")} ${c.bold(tool.name)} ${c.dim(preview(args))}\n`);
-  const change = changePreview(tool.name, args);
-  if (change) io.out(`${change}\n`);
+  // Readonly rejects every write/edit, so don't bother rendering its diff.
+  if (mode !== "readonly") {
+    const change = changePreview(tool.name, args);
+    if (change) io.out(`${change}\n`);
+  }
   const permission = await checkPermission(tool, args, mode, io.ask);
   if (!permission.ok) return `Tool call rejected: ${permission.reason}`;
 
@@ -173,7 +185,7 @@ function preview(args: any): string {
  *  prompt so the user sees exactly what a write/edit will do. edit_file already
  *  carries the exact before/after strings (no diff algorithm needed); write_file
  *  shows the new content and whether it overwrites an existing file. */
-function changePreview(name: string, args: any): string {
+export function changePreview(name: string, args: any): string {
   const CAP = 40; // don't flood the terminal on a huge change
   const hunk = (text: string, sign: string, paint: (s: string) => string): string => {
     const lines = String(text).split("\n");
@@ -185,7 +197,8 @@ function changePreview(name: string, args: any): string {
     return `${hunk(args.old_string ?? "", "-", c.red)}\n${hunk(args.new_string ?? "", "+", c.green)}`;
   }
   if (name === "write_file") {
-    const label = existsSync(resolve(String(args.path ?? ""))) ? "overwrite" : "new file";
+    const path = String(args.path ?? "");
+    const label = path && existsSync(resolve(path)) ? "overwrite" : "new file";
     return `${c.dim(`  ${label}`)}\n${hunk(args.content ?? "", "+", c.green)}`;
   }
   return "";

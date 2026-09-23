@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { contextLine, VERSION } from "./cli/ui.js";
 import { loadedContextFiles, systemPrompt } from "./config/context.js";
+import { changePreview } from "./core/agent.js";
 import { compact, estimateTokens, guardContext } from "./core/compaction.js";
 import { mcpToolName } from "./core/mcp.js";
 import { checkPermission } from "./core/permissions.js";
@@ -38,6 +39,20 @@ test("read_file reports an empty file", async () => {
   assert.equal(await read.run({ path: f }), "(empty file)");
 });
 
+test("read_file reports an offset past end-of-file (not '(empty file)')", async () => {
+  const f = join(tmp(), "short.txt");
+  writeFileSync(f, "a\nb");
+  assert.match(await read.run({ path: f, offset: 99 }), /past end of file/);
+});
+
+test("read_file redacts an OpenRouter key from file contents", async () => {
+  const f = join(tmp(), "env.txt");
+  writeFileSync(f, "OPENROUTER_API_KEY=sk-or-v1-abc123DEF456xyz");
+  const out = await read.run({ path: f });
+  assert.doesNotMatch(out, /abc123DEF456/);
+  assert.match(out, /redacted/);
+});
+
 // --- tools: write_file ---
 
 test("write_file creates parent directories", async () => {
@@ -67,6 +82,13 @@ test("edit_file rejects an ambiguous string unless replace_all", async () => {
   await assert.rejects(edit.run({ path: f, old_string: "x", new_string: "y" }), /appears 3 times/);
   await edit.run({ path: f, old_string: "x", new_string: "y", replace_all: true });
   assert.equal(readFileSync(f, "utf8"), "y y y");
+});
+
+test("edit_file inserts $ sequences literally (no regex substitution)", async () => {
+  const f = join(tmp(), "dollar.txt");
+  writeFileSync(f, "PID=HERE");
+  await edit.run({ path: f, old_string: "HERE", new_string: "$$ and $& stay" });
+  assert.equal(readFileSync(f, "utf8"), "PID=$$ and $& stay"); // not "PID=$ and HERE stay"
 });
 
 // --- tools: bash ---
@@ -150,6 +172,35 @@ test("contextLine shows used/limit + percent, empty when limit unknown", () => {
   assert.match(contextLine(120_000, 128_000), /94%/); // near-full still renders
 });
 
+test("contextLine clamps the percentage to 100 when over the window", () => {
+  const line = contextLine(200_000, 100_000);
+  assert.match(line, /100%/);
+  assert.doesNotMatch(line, /200%/);
+});
+
+// --- diff preview (changePreview) ---
+
+test("changePreview renders an edit as -old / +new", () => {
+  const out = changePreview("edit_file", { old_string: "one", new_string: "two" });
+  assert.match(out, /- one/);
+  assert.match(out, /\+ two/);
+});
+
+test("changePreview caps long content and reports the hidden line count", () => {
+  const content = Array.from({ length: 50 }, (_, i) => `L${i}`).join("\n");
+  const out = changePreview("write_file", { path: join(tmp(), "new.txt"), content });
+  assert.match(out, /new file/); // path doesn't exist
+  assert.match(out, /\+ L0/);
+  assert.match(out, /\(\+10 more lines\)/); // 50 lines, CAP 40 → 10 hidden
+});
+
+test("changePreview labels write_file overwrite vs new, and missing path isn't 'overwrite'", () => {
+  const f = join(tmp(), "exists.txt");
+  writeFileSync(f, "x");
+  assert.match(changePreview("write_file", { path: f, content: "y" }), /overwrite/);
+  assert.match(changePreview("write_file", { content: "y" }), /new file/); // no path
+});
+
 // --- context compaction ---
 
 test("estimateTokens grows with content", () => {
@@ -188,6 +239,18 @@ test("guardContext drops oldest whole rounds, keeps system + recent + tool pairs
     false,
     "no orphaned tool result — the whole round went",
   );
+});
+
+test("guardContext clips an oversized single round to fit (can't drop it)", () => {
+  const msgs: any[] = [
+    { role: "system", content: "sys" },
+    { role: "user", content: "q" },
+    { role: "tool", tool_call_id: "t", content: "X".repeat(8000) },
+  ];
+  guardContext(msgs, 500);
+  assert.equal(msgs.length, 3, "nothing dropped — only content clipped");
+  assert.ok(estimateTokens(msgs) <= 500, "clipped down under the limit");
+  assert.match(msgs[2].content, /truncated to fit context/);
 });
 
 test("compact folds old rounds into one summary, keeps recent verbatim", async () => {
@@ -270,6 +333,7 @@ test("session round-trips messages as JSONL", () => {
   const msgs = [
     { role: "system", content: "hi" },
     { role: "assistant", content: null, tool_calls: [{ id: "1" }] },
+    { role: "tool", tool_call_id: "1", content: "ok" }, // answered → tail is valid
   ];
   for (const m of msgs) appendMessage(f, m);
   assert.deepEqual(loadMessages(f), msgs);
@@ -277,4 +341,21 @@ test("session round-trips messages as JSONL", () => {
 
 test("loadMessages returns [] for a missing file", () => {
   assert.deepEqual(loadMessages(join(tmp(), "nope.jsonl")), []);
+});
+
+test("loadMessages skips a corrupt/truncated trailing line", () => {
+  const f = join(tmp(), "corrupt.jsonl");
+  writeFileSync(f, `${JSON.stringify({ role: "user", content: "hi" })}\n{"role":"assist`);
+  assert.deepEqual(loadMessages(f), [{ role: "user", content: "hi" }]);
+});
+
+test("loadMessages drops an unanswered trailing tool_calls (killed mid-turn)", () => {
+  const f = join(tmp(), "dangling.jsonl");
+  const good = [
+    { role: "user", content: "q" },
+    { role: "assistant", content: "a" },
+  ];
+  const dangling = { role: "assistant", content: null, tool_calls: [{ id: "t1" }] };
+  writeFileSync(f, [...good, dangling].map((m) => JSON.stringify(m)).join("\n"));
+  assert.deepEqual(loadMessages(f), good); // dangling tail removed → valid to resend
 });

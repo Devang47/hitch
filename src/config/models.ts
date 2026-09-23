@@ -78,16 +78,22 @@ export async function pickModel(): Promise<string | undefined> {
 }
 
 type Cache = { fetchedAt: number; models: Model[] };
+// Memoized so cachedContextLimit() (called every turn + every /cost) doesn't
+// re-read and re-parse models.json from disk each time. undefined = not loaded.
+let memo: Cache | null | undefined;
 function readCache(): Cache | undefined {
-  const path = cachePath();
-  if (!existsSync(path)) return undefined;
-  try {
-    return JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    return undefined;
+  if (memo === undefined) {
+    const path = cachePath();
+    try {
+      memo = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as Cache) : null;
+    } catch {
+      memo = null;
+    }
   }
+  return memo ?? undefined;
 }
 function writeCache(models: Model[]): void {
   mkdirSync(hitchHome(), { recursive: true });
-  writeFileSync(cachePath(), JSON.stringify({ fetchedAt: Date.now(), models }));
+  memo = { fetchedAt: Date.now(), models };
+  writeFileSync(cachePath(), JSON.stringify(memo));
 }

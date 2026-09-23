@@ -16,7 +16,7 @@ import { client, config } from "../core/llm.js";
 import { connectedServers, connectServer, disconnectServer, toolCount } from "../core/mcp.js";
 import { appendMessage } from "../session/session.js";
 import type { Message, Usage } from "../types.js";
-import { contextLine, costLine, printHelp } from "./ui.js";
+import { printHelp, statusLine } from "./ui.js";
 
 /** State a command handler may touch. `pauseInput` yields the readline while an
  *  @inquirer prompt takes over raw-mode stdin. */
@@ -60,8 +60,9 @@ const handlers: Handler[] = [
   {
     match: (l) => l === "/cost",
     run: (_l, ctx) => {
-      const ctxLine = contextLine(estimateTokens(ctx.messages), cachedContextLimit(config.model));
-      console.log(`${costLine(ctx.totals)}${ctxLine ? ` ${c.dim("·")} ${ctxLine}` : ""}`);
+      console.log(
+        statusLine(ctx.totals, estimateTokens(ctx.messages), cachedContextLimit(config.model)),
+      );
     },
   },
   {

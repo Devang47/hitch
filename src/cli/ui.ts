@@ -73,12 +73,20 @@ export function costLine(t: Usage): string {
 }
 
 /** Current context estimate vs the model's window, e.g. "12k/128k ctx (9%)".
- *  Empty when the limit is unknown (catalog not fetched); turns yellow near full. */
+ *  Empty when the limit is unknown (catalog not fetched); turns yellow near full.
+ *  Percent is clamped to 100 (a rough over-estimate shouldn't read past full). */
 export function contextLine(used: number, limit: number | undefined): string {
   if (!limit) return "";
-  const pct = Math.round((used / limit) * 100);
+  const pct = Math.min(100, Math.round((used / limit) * 100));
   const k = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
   return (pct >= 80 ? c.yellow : c.dim)(`${k(used)}/${k(limit)} ctx (${pct}%)`);
+}
+
+/** Cost totals with the context indicator appended when known. Shared by the
+ *  per-turn footer and `/cost` so the two never drift. */
+export function statusLine(t: Usage, used: number, limit: number | undefined): string {
+  const ctx = contextLine(used, limit);
+  return `${costLine(t)}${ctx ? ` ${c.dim("·")} ${ctx}` : ""}`;
 }
 
 export function printHelp(): void {
