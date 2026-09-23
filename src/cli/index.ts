@@ -146,10 +146,18 @@ if (initial && !process.stdin.isTTY) {
 }
 
 for (;;) {
+  const prompt = promptLabel({
+    cwd,
+    model: config.model,
+    mode,
+    used: estimateTokens(messages),
+    limit: cachedContextLimit(config.model),
+    cost: totals.cost,
+  });
   let line: string | null;
   try {
     line = await Promise.race([
-      rl.question(`\n${promptLabel(cwd)}`).then((l) => l.trim()),
+      rl.question(`\n${prompt}`).then((l) => l.trim()),
       inputClosed.then(() => null),
     ]);
   } catch {

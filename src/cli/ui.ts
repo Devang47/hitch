@@ -31,17 +31,22 @@ export function banner({ model, cwd, mode, context, resumed }: BannerInfo): stri
     ].join("\n");
   }
   const ctx = context.length ? context.map((p) => basename(p)).join(", ") : c.dim("none");
+  const rows: [string, string][] = [
+    ["model", `${c.green(model)}${resumed ? c.yellow("  · resumed") : ""}`],
+    ["dir", c.magenta(basename(cwd) || cwd)],
+    ["mode", modeColor(mode)],
+    ["context", ctx],
+  ];
+  const w = Math.max(...rows.map(([k]) => k.length));
   return [
     "",
     ...LOGO.map((l) => c.cyan(l)),
     "",
-    `  ${c.dim("a minimal OpenRouter coding agent")} ${c.dim(`· v${VERSION}`)}`,
+    `  ${c.dim(`a minimal OpenRouter coding agent · v${VERSION}`)}`,
     "",
-    `  ${c.dim("model  ")}  ${c.green(model)}${resumed ? c.yellow("  · resumed") : ""}`,
-    `  ${c.dim("dir    ")}  ${c.magenta(basename(cwd) || cwd)}`,
-    `  ${c.dim("mode   ")}  ${modeColor(mode)}`,
-    `  ${c.dim("context")}  ${ctx}`,
-    `  ${c.dim("type /help, or / for commands")}`,
+    ...rows.map(([k, v]) => `  ${c.dim(k.padEnd(w))}   ${v}`),
+    "",
+    `  ${c.dim("/help for commands · / to browse")}`,
   ].join("\n");
 }
 
@@ -51,9 +56,40 @@ function modeColor(mode: string): string {
   return c.green("ask");
 }
 
-/** The REPL prompt: the current directory name + an arrow. */
-export function promptLabel(cwd: string): string {
-  return `${c.magenta(basename(cwd) || "hitch")} ${c.cyan("❯")} `;
+export type PromptInfo = {
+  cwd: string;
+  model: string;
+  mode: string;
+  used: number;
+  limit: number | undefined;
+  cost: number;
+};
+
+/** The REPL prompt: a status line (dir · model · mode · context% · cost) above
+ *  the input arrow, like a rich shell prompt. Two lines so ANSI colors on the
+ *  status can't throw off readline's cursor math on the input line. */
+export function promptLabel({ cwd, model, mode, used, limit, cost }: PromptInfo): string {
+  const segs = [
+    c.green(shortModel(model)),
+    modeColor(mode),
+    contextPct(used, limit),
+    cost > 0 ? c.green(`$${cost.toFixed(4)}`) : "",
+  ].filter(Boolean);
+  const dir = c.magenta(basename(cwd) || "hitch");
+  return `${dir} ${c.dim("│")} ${segs.join(c.dim(" · "))}\n${c.cyan("❯")} `;
+}
+
+/** Context fill as a compact percentage ("9% ctx"); empty when the limit is
+ *  unknown. Yellow past 80% — the same threshold that triggers auto-trim. */
+function contextPct(used: number, limit: number | undefined): string {
+  if (!limit) return "";
+  const pct = Math.min(100, Math.round((used / limit) * 100));
+  return (pct >= 80 ? c.yellow : c.dim)(`${pct}% ctx`);
+}
+
+/** Model id without its provider prefix: "nvidia/nemotron:free" → "nemotron:free". */
+function shortModel(id: string): string {
+  return id.slice(id.lastIndexOf("/") + 1);
 }
 
 /** Set the terminal tab/window title (OSC 0). No-op when stdout is piped so we
